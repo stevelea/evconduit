@@ -11,5 +11,6 @@ export type UserDetails = {
   stripe_customer_id?: string | null;
   tier?: 'free' | 'pro' | 'basic';
   subscription_status?: string | null;
-  // ...add more fields you want to display/update!
+  ha_webhook_id?: string | null;
+  ha_external_url?: string | null;
 };

@@ -116,6 +116,39 @@ export function UserDetailHeader({ user, loading, updateUserField }: Props) {
 
         </div>
       </div>
+
+      {/* HA Webhook Status Section */}
+      <div className="mt-6 pt-6 border-t">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Home Assistant Webhook</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center gap-3">
+            <label className="font-semibold text-gray-700">Status:</label>
+            <span className={user.ha_webhook_id && user.ha_external_url ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+              {user.ha_webhook_id && user.ha_external_url ? 'Registered' : 'Not Registered'}
+            </span>
+          </div>
+          {user.ha_webhook_id && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Webhook ID</label>
+              <Input
+                value={user.ha_webhook_id}
+                readOnly
+                className="w-full max-w-100 bg-gray-50 font-mono text-xs"
+              />
+            </div>
+          )}
+          {user.ha_external_url && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">External URL</label>
+              <Input
+                value={user.ha_external_url}
+                readOnly
+                className="w-full bg-gray-50 font-mono text-xs"
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -6,14 +6,16 @@ from app.enode.auth import get_access_token
 logger = logging.getLogger(__name__)
 
 async def fetch_enode_webhook_subscriptions():
-    """Fetches a list of all active webhook subscriptions from Enode."""
+    """Fetches a list of all webhook subscriptions from Enode."""
     token = await get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
     url = f"{ENODE_BASE_URL}/webhooks"
     async with httpx.AsyncClient() as client:
         res = await client.get(url, headers=headers)
         res.raise_for_status()
-        return res.json().get("data", [])
+        response_json = res.json()
+        logger.info(f"[📡 ENODE] Raw webhook response: {response_json}")
+        return response_json.get("data", [])
 
 async def subscribe_to_webhooks():
     """Subscribes to Enode webhooks for specific events."""

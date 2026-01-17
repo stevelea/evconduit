@@ -13,18 +13,22 @@ async def sync_webhook_subscriptions_from_enode():
     """
     Fetch current webhook subscriptions from Enode and upsert them to Supabase.
     """
-    
+
     logger.info("[🔄] Fetching subscriptions from Enode")
     enode_subs = await fetch_enode_webhook_subscriptions()
     logger.info(f"[ℹ️] Found {len(enode_subs)} subscriptions from Enode")
 
     for item in enode_subs:
         try:
+            # Log raw Enode response for debugging
+            is_active = item.get("isActive", False)
+            logger.info(f"[📡 Enode] Webhook {item.get('id')}: isActive={is_active}, raw keys={list(item.keys())}")
+
             response = supabase.table("webhook_subscriptions").upsert({
                 "enode_webhook_id": item["id"],
                 "url": item["url"],
                 "events": item.get("events", []),
-                "is_active": item.get("isActive", False),
+                "is_active": is_active,
                 "api_version": item.get("apiVersion"),
                 "last_success": item.get("lastSuccess"),
                 "created_at": item.get("createdAt"),
@@ -33,7 +37,7 @@ async def sync_webhook_subscriptions_from_enode():
             if not response.data:
                 logger.warning(f"⚠️ No data returned on upsert for {item['id']}")
             else:
-                logger.info(f"✅ Upserted subscription {item['id']}")
+                logger.info(f"✅ Upserted subscription {item['id']} with is_active={is_active}")
 
         except Exception as e:
             logger.error(f"❌ Exception while upserting {item['id']}: {e}")
