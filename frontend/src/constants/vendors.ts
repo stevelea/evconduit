@@ -1,0 +1,51 @@
+// src/constants/vendors.ts
+
+export const vendors = [
+    "XPENG", /* Hardcoded string */
+    "ACURA", /* Hardcoded string */
+    "ALFAROMEO", /* Hardcoded string */
+    "AUDI", /* Hardcoded string */
+    "BMW", /* Hardcoded string */
+    "BYD", /* Hardcoded string */
+    "CADILLAC", /* Hardcoded string */
+    "CHEVROLET", /* Hardcoded string */
+    "CHRYSLER", /* Hardcoded string */
+    "CITROEN", /* Hardcoded string */
+    "CUPRA", /* Hardcoded string */
+    "DS", /* Hardcoded string */
+    "DODGE", /* Hardcoded string */
+    "FIAT", /* Hardcoded string */
+    "FORD", /* Hardcoded string */
+    "GMC", /* Hardcoded string */
+    "HONDA", /* Hardcoded string */
+    "HYUNDAI", /* Hardcoded string */
+    "JAGUAR", /* Hardcoded string */
+    "JEEP", /* Hardcoded string */
+    "KIA", /* Hardcoded string */
+    "LANDROVER", /* Hardcoded string */
+    "LANCIA", /* Hardcoded string */
+    "LEXUS", /* Hardcoded string */
+    "LUCID", /* Hardcoded string */
+    "MAZDA", /* Hardcoded string */
+    "MERCEDES", /* Hardcoded string */
+    "MG", /* Hardcoded string */
+    "MINI", /* Hardcoded string */
+    "NIO", /* Hardcoded string */
+    "NISSAN", /* Hardcoded string */
+    "OPEL", /* Hardcoded string */
+    "PEUGEOT", /* Hardcoded string */
+    "POLESTAR", /* Hardcoded string */
+    "PORSCHE", /* Hardcoded string */
+    "RENAULT", /* Hardcoded string */
+    "RAM", /* Hardcoded string */
+    "RIVIAN", /* Hardcoded string */
+    "SEAT", /* Hardcoded string */
+    "SKODA", /* Hardcoded string */
+    "SUBARU", /* Hardcoded string */
+    "TESLA", /* Hardcoded string */
+    "TOYOTA", /* Hardcoded string */
+    "VAUXHALL", /* Hardcoded string */
+    "VOLKSWAGEN", /* Hardcoded string */
+    "VOLVO", /* Hardcoded string */
+  ];
+  

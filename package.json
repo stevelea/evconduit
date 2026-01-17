@@ -1,0 +1,14 @@
+{
+  "name": "evconduit",
+  "version": "0.2.0",
+  "private": true,
+  "devDependencies": {
+    "supabase": "^2.22.6"
+  },
+  "scripts": {
+    "supabase": "supabase"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0"
+  }
+}

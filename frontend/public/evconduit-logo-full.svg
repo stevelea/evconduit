@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="900" height="240" viewBox="0 0 900 240" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="EVConduit logo">
+  <defs>
+    <linearGradient id="evcGrad" x1="40" y1="40" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+    <mask id="ringMask">
+      <rect width="240" height="240" fill="white"/>
+      <circle cx="120" cy="120" r="72" fill="black"/>
+    </mask>
+  </defs>
+
+  <!-- Icon -->
+  <g transform="translate(20,0)">
+    <!-- Outer ring -->
+    <circle cx="120" cy="120" r="88" stroke="url(#evcGrad)" stroke-width="22" stroke-linecap="round" opacity="0.95"/>
+    <!-- Subtle cutout for a modern "C" feel -->
+    <g mask="url(#ringMask)">
+      <rect x="120" y="0" width="140" height="240" fill="transparent"/>
+      <rect x="176" y="40" width="64" height="160" fill="white" opacity="0"/>
+    </g>
+
+    <!-- Data bars (ascending) -->
+    <g fill="url(#evcGrad)">
+      <rect x="72" y="132" width="18" height="44" rx="6"/>
+      <rect x="98" y="112" width="18" height="64" rx="6"/>
+      <rect x="124" y="92" width="18" height="84" rx="6"/>
+    </g>
+
+    <!-- Lightning bolt -->
+    <path d="M145 78 L117 126 H137 L112 176 L156 118 H135 L165 78 Z"
+          fill="white" opacity="0.95"/>
+
+    <!-- Plug prongs (minimal) -->
+    <g stroke="url(#evcGrad)" stroke-width="10" stroke-linecap="round">
+      <line x1="52" y1="74" x2="52" y2="48"/>
+      <line x1="72" y1="74" x2="72" y2="48"/>
+      <path d="M42 74 H82" />
+    </g>
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(270,78)">
+    <text x="0" y="0"
+          font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+          font-size="86" font-weight="750" letter-spacing="-1.5">
+      <tspan fill="#2563EB">EV</tspan><tspan fill="#22C55E">Conduit</tspan>
+    </text>
+
+    <!-- Tagline (optional) -->
+    <text x="4" y="78"
+          font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+          font-size="28" font-weight="520" letter-spacing="0.2"
+          fill="currentColor" opacity="0.70">
+      EV Data Aggregator
+    </text>
+  </g>
+
+  <!-- Transparent background by default -->
+</svg>
