@@ -259,3 +259,63 @@ Required environment variables:
 - **Files Modified**: 11 frontend components updated with systematic improvements
 - **Outcome**: Clean repository state, all fixes deployed to production successfully
 
+## Production Environment
+
+### Docker Deployment
+Production runs in Docker containers:
+- **Backend**: `evconduit-backend-1` on port 9100 (maps to internal 8000)
+- **Frontend**: `evconduit-frontend-1` on port 3010 (maps to internal 3000)
+- **Redis**: `evconduit-redis-1` on port 6379
+
+### Viewing Production Logs
+```bash
+docker logs evconduit-backend-1 --tail 100      # Backend logs
+docker logs evconduit-frontend-1 --tail 100     # Frontend logs
+docker logs evconduit-backend-1 -f              # Follow logs in real-time
+```
+
+### Restarting Services
+```bash
+docker compose restart backend    # Restart backend only
+docker compose restart frontend   # Restart frontend only
+docker compose up -d --build      # Rebuild and restart all
+```
+
+## Known Enode/Vendor Issues
+
+### XPENG: "Charging Complete" Misreported as Unplugged
+**Discovered**: 2026-01-17
+
+**Issue**: When an XPENG vehicle completes charging but remains plugged in, Enode incorrectly reports:
+- `isPluggedIn: false`
+- `powerDeliveryState: UNPLUGGED`
+
+**Expected behavior**: Should report `isPluggedIn: true` with `powerDeliveryState: PLUGGED_IN:STOPPED` or similar.
+
+**Impact**: Home Assistant shows vehicle as unplugged when it's actually still connected.
+
+**Workaround**: None currently. Users should report to Enode support.
+
+**Evidence**: XPENG app shows "Charging Complete. Unplug Promptly" (confirming plugged in) while Enode API returns `UNPLUGGED` state.
+
+### Debugging Webhook Issues
+1. Check container logs: `docker logs evconduit-backend-1 --tail 200 | grep -E "(📥|HA push)"`
+2. Query webhook history:
+   ```sql
+   SELECT created_at, payload->'vehicle'->'chargeState'
+   FROM webhook_logs
+   WHERE user_id = 'xxx'
+   ORDER BY created_at DESC LIMIT 10;
+   ```
+3. Query Enode directly via Python:
+   ```python
+   from app.enode.auth import get_access_token
+   # Use token to call ENODE_BASE_URL/vehicles/{vehicle_id}
+   ```
+
+### Home Assistant Webhook Push
+- Webhooks are pushed to HA via `push_to_homeassistant()` in `backend/app/api/webhook.py`
+- User's HA webhook settings stored in `users` table: `ha_webhook_id`, `ha_external_url`
+- Push format: Single event object (not array) to `{ha_external_url}/api/webhook/{ha_webhook_id}`
+- HA returns 500 error if sent as array - must be single object
+
