@@ -10,6 +10,20 @@ import { useUserDetails } from "@/hooks/useUserDetails";
 import { UserDetailHeader } from "@/components/admin/user/UserDetailHeader";
 import { Card } from "@/components/ui/card";
 
+/**
+ * Convert a 2-letter country code to a flag emoji.
+ * Uses Unicode regional indicator symbols.
+ */
+function countryCodeToFlag(countryCode: string): string {
+  const code = countryCode.toUpperCase();
+  if (code.length !== 2) return '';
+  const offset = 127397; // Regional indicator symbol A starts at 127462, 'A' is 65, so offset is 127462-65
+  return String.fromCodePoint(
+    code.charCodeAt(0) + offset,
+    code.charCodeAt(1) + offset
+  );
+}
+
 export default function AdminUserDetailPage() {
   const params = useParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -58,6 +72,11 @@ export default function AdminUserDetailPage() {
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-indigo-700">{v.vendor}</span>
+                          {v.country_code && (
+                            <span className="text-lg" title={v.country_code}>
+                              {countryCodeToFlag(v.country_code)} {v.country_code}
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-gray-600">
                           <strong>Vehicle ID:</strong>{" "}

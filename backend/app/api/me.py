@@ -293,6 +293,31 @@ async def get_me(user=Depends(get_supabase_user)):
         raise
 
 
+class UpdateNameRequest(BaseModel):
+    name: str
+
+
+@router.patch("/me/name")
+async def update_name(payload: UpdateNameRequest, user=Depends(get_supabase_user)):
+    """
+    Update the current user's display name.
+    Name is required and cannot be empty.
+    """
+    user_id = user["sub"]
+    name = payload.name.strip()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    try:
+        await update_user(user_id=user_id, name=name)
+        logger.info(f"[✅] User {user_id} updated name to '{name}'")
+        return {"success": True, "name": name}
+    except Exception as e:
+        logger.error(f"[❌] Failed to update name for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update name")
+
+
 @router.post("/me/activate-pro-trial")
 async def activate_pro_trial(user=Depends(get_supabase_user)):
     user_id = user["sub"]

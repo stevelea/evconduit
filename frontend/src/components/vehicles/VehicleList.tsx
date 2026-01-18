@@ -1,3 +1,4 @@
+import React, { memo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Vehicle } from "@/types/vehicle";
 import clsx from "clsx";
@@ -10,7 +11,7 @@ type Props = {
   onCopyIdClick: (vehicle: Vehicle) => void;
 };
 
-export default function VehicleList({
+function VehicleList({
   vehicles,
   loading,
   onUnlinkVendor,
@@ -251,3 +252,6 @@ export default function VehicleList({
     </>
   );
 }
+
+// Memoize to prevent re-renders when parent state changes but vehicles don't
+export default memo(VehicleList);

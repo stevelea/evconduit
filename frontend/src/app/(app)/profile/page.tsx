@@ -29,11 +29,17 @@ export default function ProfilePage() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscribeLoading, setSubscribeLoading] = useState(false);
 
+  const [nameSaveLoading, setNameSaveLoading] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+
   const router = useRouter();
 
   useEffect(() => {
     if (mergedUser?.notify_offline !== undefined) {
       setNotifyOffline(mergedUser.notify_offline);
+    }
+    if (mergedUser?.name) {
+      setDisplayName(mergedUser.name);
     }
   }, [mergedUser]);
 
@@ -101,6 +107,32 @@ export default function ProfilePage() {
     setNotifyLoading(false);
   };
 
+  const handleNameSave = async (newName: string): Promise<boolean> => {
+    if (!accessToken) {
+      toast.error('Not authenticated');
+      return false;
+    }
+
+    setNameSaveLoading(true);
+    const { error } = await authFetch('/me/name', {
+      method: 'PATCH',
+      accessToken,
+      body: JSON.stringify({ name: newName }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    setNameSaveLoading(false);
+
+    if (error) {
+      toast.error('Failed to update name');
+      return false;
+    }
+
+    setDisplayName(newName);
+    toast.success('Name updated successfully');
+    return true;
+  };
+
   const handleToggleNewsletter = async (checked: boolean) => {
     if (!accessToken || !user?.email) {
       toast.error('User or access token missing'); /* Hardcoded string */
@@ -145,7 +177,7 @@ export default function ProfilePage() {
         <div className="flex flex-col gap-4">
           <UserInfoCard
             userId={user.id}
-            name={mergedUser?.name ?? ''}
+            name={displayName ?? mergedUser?.name ?? ''}
             email={user.email ?? ''}
             tier={mergedUser?.tier?.toUpperCase() ?? 'FREE'} /* Hardcoded string */
             isOnTrial={mergedUser?.is_on_trial}
@@ -157,7 +189,8 @@ export default function ProfilePage() {
             isSubscribed={isSubscribed}
             subscribeLoading={subscribeLoading}
             avatarUrl={user.user_metadata?.avatar_url ?? null}
-            onNameSave={() => {}} // Byt ut till riktig save-funktion senare
+            onNameSave={handleNameSave}
+            nameSaveLoading={nameSaveLoading}
             onToggleNotify={handleToggleNotify}
             onToggleSubscribe={handleToggleNewsletter}
           />

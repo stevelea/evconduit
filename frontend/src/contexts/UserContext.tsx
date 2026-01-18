@@ -1,19 +1,19 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { authFetch } from '@/lib/authFetch';
 import type { User } from '@supabase/supabase-js';
-import type { UserDetails } from '@/types/userDetails'; // Import UserDetails
+import type { UserDetails } from '@/types/userDetails';
 
 interface MergedUser extends UserDetails {
   approved: boolean;
-  online_status?: 'green' | 'yellow' | 'red' | 'grey'; /* Hardcoded string */ /* Hardcoded string */ /* Hardcoded string */ /* Hardcoded string */
-  tier?: 'free' | 'basic' | 'pro'; /* Hardcoded string */ /* Hardcoded string */ /* Hardcoded string */
+  online_status?: 'green' | 'yellow' | 'red' | 'grey';
+  tier?: 'free' | 'basic' | 'pro';
   is_on_trial?: boolean;
-  trial_ends_at?: string | null; // NEW: When the trial ends
+  trial_ends_at?: string | null;
   sms_credits?: number;
-  purchased_api_tokens?: number; // NEW: User's balance of purchased API tokens
+  purchased_api_tokens?: number;
 }
 
 type UserContextType = {
@@ -21,6 +21,7 @@ type UserContextType = {
   mergedUser: MergedUser | null;
   accessToken: string | null;
   loading: boolean;
+  onlineStatus: 'green' | 'yellow' | 'red' | 'grey';
   refreshUser: (showSkeleton?: boolean) => Promise<void>;
 };
 
@@ -33,8 +34,18 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  // Updated fetchUserAndMe that can handle whether skeleton should be shown or not /* Hardcoded string */
-  const fetchUserAndMe = async (showSkeleton = false) => {
+  // Debounce ref to prevent multiple rapid /me calls
+  const lastFetchTime = useRef<number>(0);
+  const pendingFetch = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchUserAndMe = useCallback(async (showSkeleton = false) => {
+    // Debounce: skip if called within 1 second of last fetch
+    const now = Date.now();
+    if (now - lastFetchTime.current < 1000) {
+      return;
+    }
+    lastFetchTime.current = now;
+
     if (showSkeleton) setLoading(true);
     const { data: { session }, error } = await supabase.auth.getSession();
     if (!session || error) {
@@ -56,18 +67,16 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     }
     setLoading(false);
     setHasLoadedOnce(true);
-  };
+  }, []);
 
+  // Initial load and auth state changes
   useEffect(() => {
-    // First load: show skeleton /* Hardcoded string */
     fetchUserAndMe(true);
 
-    // Listen for Supabase auth changes (refresh or login/logout) /* Hardcoded string */
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.access_token) {
         setAccessToken(session.access_token);
         setUser(session.user);
-        // Only update, do not show skeleton /* Hardcoded string */
         fetchUserAndMe(false);
       } else {
         setUser(null);
@@ -78,16 +87,54 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchUserAndMe]);
+
+  // Centralized vehicle realtime listener - debounced to prevent excessive API calls
+  useEffect(() => {
+    if (!user?.id || !accessToken) return;
+
+    const channel = supabase
+      .channel('user-vehicles-central')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'vehicles',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          // Debounce vehicle updates - wait 500ms before fetching
+          if (pendingFetch.current) {
+            clearTimeout(pendingFetch.current);
+          }
+          pendingFetch.current = setTimeout(() => {
+            fetchUserAndMe(false);
+          }, 500);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (pendingFetch.current) {
+        clearTimeout(pendingFetch.current);
+      }
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, accessToken, fetchUserAndMe]);
+
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    user,
+    mergedUser,
+    accessToken,
+    loading: !hasLoadedOnce ? loading : false,
+    onlineStatus: mergedUser?.online_status ?? 'grey',
+    refreshUser: fetchUserAndMe,
+  }), [user, mergedUser, accessToken, loading, hasLoadedOnce, fetchUserAndMe]);
 
   return (
-    <UserContext.Provider value={{
-      user,
-      mergedUser,
-      accessToken,
-      loading: !hasLoadedOnce ? loading : false,
-      refreshUser: fetchUserAndMe,
-    }}>
+    <UserContext.Provider value={contextValue}>
       {children}
     </UserContext.Provider>
   );

@@ -4,12 +4,24 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
+import reverse_geocode
 from app.auth.supabase_auth import get_supabase_user
 from app.storage.user import get_all_users_with_enode_info, set_user_approval, delete_user
 from app.enode.user import delete_enode_user
 from app.lib.supabase import get_supabase_admin_client
 
 logger = logging.getLogger(__name__)
+
+
+def get_country_code_from_location(lat: float, lon: float) -> str | None:
+    """Convert latitude/longitude to country code using reverse geocoding."""
+    try:
+        result = reverse_geocode.search([(lat, lon)])
+        if result and len(result) > 0:
+            return result[0].get("country_code")
+    except Exception as e:
+        logger.warning(f"Failed to reverse geocode ({lat}, {lon}): {e}")
+    return None
 
 router = APIRouter()
 
@@ -50,9 +62,37 @@ async def get_user_details(user_id: str, user=Depends(require_admin)):
 
         user_data = user_res.data
 
-        # Fetch user's vehicles
-        vehicles_res = supabase.table("vehicles").select("vehicle_id, vendor, updated_at, online").eq("user_id", user_id).execute()
-        vehicles = vehicles_res.data or []
+        # Fetch user's vehicles with cache data for location
+        vehicles_res = supabase.table("vehicles").select("vehicle_id, vendor, updated_at, online, vehicle_cache").eq("user_id", user_id).execute()
+        vehicles_raw = vehicles_res.data or []
+
+        # Process vehicles to extract location and country code
+        vehicles = []
+        for v in vehicles_raw:
+            vehicle_data = {
+                "vehicle_id": v.get("vehicle_id"),
+                "vendor": v.get("vendor"),
+                "updated_at": v.get("updated_at"),
+                "online": v.get("online"),
+            }
+
+            # Extract location from vehicle_cache if available
+            cache = v.get("vehicle_cache") or {}
+            location = cache.get("location")
+            if location:
+                lat = location.get("latitude")
+                lon = location.get("longitude")
+                vehicle_data["location"] = {
+                    "latitude": lat,
+                    "longitude": lon,
+                }
+                # Get country code from coordinates
+                if lat is not None and lon is not None:
+                    country_code = get_country_code_from_location(lat, lon)
+                    if country_code:
+                        vehicle_data["country_code"] = country_code
+
+            vehicles.append(vehicle_data)
 
         # Combine data
         result = {

@@ -1,9 +1,13 @@
 // src/components/profile/UserInfoCard.tsx
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import TooltipInfo from "../TooltipInfo";
 import ProfileSettingToggle from './ProfileSettingToggle';
 import { format } from 'date-fns';
+import { useState, useEffect } from 'react';
+import { Pencil, Check, X } from 'lucide-react';
 
 import ApiUsageDisplay from "./ApiUsageDisplay"; // IMPORT a new component
 
@@ -20,10 +24,11 @@ type Props = {
   notifyLoading: boolean;
   isSubscribed: boolean;
   subscribeLoading: boolean;
-  onNameSave?: (name: string) => void;
+  onNameSave?: (name: string) => Promise<boolean>;
   onToggleNotify?: (checked: boolean) => void;
   onToggleSubscribe?: (checked: boolean) => void;
   avatarUrl?: string | null;
+  nameSaveLoading?: boolean;
 };
 
 export default function UserInfoCard({
@@ -39,10 +44,49 @@ export default function UserInfoCard({
   notifyLoading,
   isSubscribed,
   subscribeLoading,
+  onNameSave,
   onToggleNotify,
   onToggleSubscribe,
   avatarUrl,
+  nameSaveLoading,
 }: Props) {
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState(name);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  // If name is empty or "unknown", prompt user to set it
+  const nameIsMissing = !name || name === 'unknown';
+
+  useEffect(() => {
+    setEditedName(name);
+  }, [name]);
+
+  const handleStartEdit = () => {
+    setEditedName(name === 'unknown' ? '' : name);
+    setNameError(null);
+    setIsEditingName(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditedName(name);
+    setNameError(null);
+    setIsEditingName(false);
+  };
+
+  const handleSaveName = async () => {
+    const trimmedName = editedName.trim();
+    if (!trimmedName) {
+      setNameError('Name is required');
+      return;
+    }
+    if (onNameSave) {
+      const success = await onNameSave(trimmedName);
+      if (success) {
+        setIsEditingName(false);
+        setNameError(null);
+      }
+    }
+  };
   return (
     <Card className="mb-6">
       <CardContent className="pb-6 px-6 pt-1">
@@ -61,7 +105,75 @@ export default function UserInfoCard({
 
         {/* Main info + settings - now left-aligned */}
         <div className="space-y-3">
-          <div className="font-semibold text-lg">{name}</div>
+          {/* Editable Name Field */}
+          {isEditingName ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={editedName}
+                  onChange={(e) => {
+                    setEditedName(e.target.value);
+                    if (e.target.value.trim()) {
+                      setNameError(null);
+                    }
+                  }}
+                  placeholder="Enter your name"
+                  className={`max-w-[200px] h-8 ${nameError ? 'border-red-500' : ''}`}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveName();
+                    if (e.key === 'Escape') handleCancelEdit();
+                  }}
+                  disabled={nameSaveLoading}
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleSaveName}
+                  disabled={nameSaveLoading}
+                  className="h-8 w-8 p-0"
+                >
+                  <Check className="h-4 w-4 text-green-600" />
+                </Button>
+                {!nameIsMissing && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancelEdit}
+                    disabled={nameSaveLoading}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4 text-gray-500" />
+                  </Button>
+                )}
+              </div>
+              {nameError && (
+                <p className="text-xs text-red-500">{nameError}</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {nameIsMissing ? (
+                <button
+                  onClick={handleStartEdit}
+                  className="font-semibold text-lg text-amber-600 hover:text-amber-700 underline decoration-dashed cursor-pointer"
+                >
+                  Set your name
+                </button>
+              ) : (
+                <>
+                  <span className="font-semibold text-lg">{name}</span>
+                  <button
+                    onClick={handleStartEdit}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Edit name"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="text-xs text-gray-500 -mt-2">ID: {userId}</div>
           <div className="text-muted-foreground text-sm">
             <a href={`mailto:${email}`} className="hover:underline">

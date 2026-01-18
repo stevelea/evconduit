@@ -35,12 +35,11 @@ export function useAuth({
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // 1) Sync accessToken when the Supabase session changes /* Hardcoded string */
+  // 1) Sync accessToken when the Supabase session changes
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.access_token) {
         setAccessToken(session.access_token);
-        console.log("🔑 useAuth setting token:", session.access_token);
       } else {
         setAccessToken(null);
       }
@@ -66,13 +65,12 @@ export function useAuth({
         setOnlineStatus('grey'); /* Hardcoded string */
         if (requireAuth) router.push(redirectTo);
       } else {
-        // We have a valid Supabase session /* Hardcoded string */
+        // We have a valid Supabase session
         setAuthUser(session.user);
         setAccessToken(session.access_token);
-        console.log("🔑 useAuth setting token:", session.access_token);
 
-        // Fetch “/me” from your backend to get roles, profile fields, etc. /* Hardcoded string */
-        const { data, error: meError } = await authFetch('/me', { /* Hardcoded string */
+        // Fetch "/me" from your backend to get roles, profile fields, etc.
+        const { data, error: meError } = await authFetch('/me', {
           method: 'GET',
           accessToken: session.access_token,
         });
@@ -93,38 +91,8 @@ export function useAuth({
     fetchUserAndMe();
   }, [router, redirectTo, requireAuth]);
 
-  // 3) Subscribe to realtime vehicle updates for “/me” refresh on change /* Hardcoded string */
-  useEffect(() => {
-    if (!mergedUser?.id || !accessToken) return;
-
-    const channel = supabase
-      .channel('user-vehicle-updates') /* Hardcoded string */
-      .on(
-        'postgres_changes', /* Hardcoded string */
-        {
-          event: 'UPDATE', /* Hardcoded string */
-          schema: 'public', /* Hardcoded string */
-          table: 'vehicles', /* Hardcoded string */
-          filter: `user_id=eq.${mergedUser.id}`, /* Hardcoded string */
-        },
-        async () => {
-          // On any vehicle change, re-fetch "/me" to refresh mergedUser (and online_status) /* Hardcoded string */
-          const { data, error } = await authFetch('/me', { /* Hardcoded string */
-            method: 'GET',
-            accessToken,
-          });
-          if (!error && data) {
-            setMergedUser(data as MergedUser);
-            setOnlineStatus((data as MergedUser).online_status ?? 'grey'); /* Hardcoded string */
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [mergedUser, accessToken]);
+  // Note: Vehicle realtime updates are now handled centrally in UserContext
+  // to prevent duplicate API calls across the app
 
   return {
     user: authUser,

@@ -9,6 +9,11 @@ export type UserVehicle = {
   vendor: string;
   updated_at?: string;
   online?: boolean;
+  country_code?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
 };
 
 export function useUserDetails(userId: string) {
