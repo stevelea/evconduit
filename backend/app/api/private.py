@@ -11,9 +11,10 @@ from app.storage.api_key import create_api_key, get_api_key_info
 from app.storage.insights import get_global_stats_row, get_user_stats_row
 from app.storage.invoice import get_user_invoices
 from app.storage.subscription import get_user_record, get_user_subscription
-from app.storage.user import get_ha_webhook_settings, get_onboarding_status, set_ha_webhook_settings, update_notify_offline, update_user_terms
+from app.storage.user import get_ha_webhook_settings, get_ha_webhook_stats, get_onboarding_status, set_ha_webhook_settings, update_ha_url_check, update_notify_offline, update_user_terms
+import httpx
 from app.api.dependencies import require_pro_tier
-from app.storage.vehicle import get_all_cached_vehicles, get_vehicle_by_vehicle_id, save_vehicle_data_with_client
+from app.storage.vehicle import delete_vehicles_by_vendor, get_all_cached_vehicles, get_vehicle_by_vehicle_id, get_vehicles_by_country, save_vehicle_data_with_client
 
 import json
 import logging
@@ -214,13 +215,19 @@ async def api_create_link_session(
 async def unlink_vendor_route(payload: UnlinkRequest, user=Depends(get_supabase_user)):
     """Unlinks a vehicle vendor for the current user."""
     user_id = user["sub"]
+    logger.info(f"🔗 Unlinking vendor {payload.vendor} for user {user_id}")
 
     success, error = await unlink_vendor(user_id=user_id, vendor=payload.vendor)
 
     if not success:
+        logger.error(f"❌ Unlink failed for user {user_id}: {error}")
         raise HTTPException(status_code=500, detail=f"Unlink failed: {error}")
 
-    return {"success": True, "message": f"Vendor {payload.vendor} unlinked"}
+    # Clean up local vehicle records
+    deleted_count = await delete_vehicles_by_vendor(user_id, payload.vendor)
+    logger.info(f"✅ Vendor {payload.vendor} unlinked, {deleted_count} vehicles deleted")
+
+    return {"success": True, "message": f"Vendor {payload.vendor} unlinked", "deleted_vehicles": deleted_count}
 
 @router.patch("/user/{user_id}")
 async def patch_user_terms(user_id: str, payload: dict, user=Depends(get_supabase_user)):
@@ -299,6 +306,87 @@ async def api_patch_webhook(
     updated = set_ha_webhook_settings(user_id, webhook_id, url)
     return updated
 
+
+@router.get("/user/{user_id}/webhook/stats")
+async def api_get_webhook_stats(user_id: str, user=Depends(get_supabase_user)):
+    """Gets the Home Assistant webhook statistics for a user."""
+    if user["sub"] != user_id and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not allowed")
+    stats = get_ha_webhook_stats(user_id)
+    if stats is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return stats
+
+
+@router.post("/user/{user_id}/webhook/test")
+async def api_test_webhook(user_id: str, user=Depends(get_supabase_user)):
+    """Test HA webhook URL reachability for a user."""
+    if user["sub"] != user_id and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    stats = get_ha_webhook_stats(user_id)
+    if stats is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    ha_webhook_id = stats.get("ha_webhook_id")
+    ha_external_url = stats.get("ha_external_url")
+
+    if not ha_webhook_id or not ha_external_url:
+        update_ha_url_check(user_id, reachable=False)
+        return {
+            "reachable": False,
+            "error": "HA webhook not configured",
+            "ha_webhook_id": ha_webhook_id,
+            "ha_external_url": ha_external_url,
+        }
+
+    # Test the HA webhook URL with a POST request containing a test event
+    url = f"{ha_external_url.rstrip('/')}/api/webhook/{ha_webhook_id}"
+
+    # Send a test event that HA will receive but won't match typical automations
+    test_payload = {
+        "event": "connection_test",
+        "source": "evconduit",
+        "test": True,
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(url, json=test_payload, timeout=10.0, follow_redirects=True)
+            # Any HTTP response means the URL is reachable
+            reachable = True
+            status_code = resp.status_code
+            error = None
+        except httpx.TimeoutException:
+            reachable = False
+            status_code = None
+            error = "Connection timed out"
+        except httpx.ConnectError as e:
+            reachable = False
+            status_code = None
+            error = f"Connection error: {str(e)}"
+        except Exception as e:
+            reachable = False
+            status_code = None
+            error = str(e)
+
+    # Update the database with check result
+    update_ha_url_check(user_id, reachable=reachable)
+
+    result = {
+        "reachable": reachable,
+        "url_tested": url,
+        "ha_webhook_id": ha_webhook_id,
+        "ha_external_url": ha_external_url,
+    }
+    if status_code is not None:
+        result["status_code"] = status_code
+    if error:
+        result["error"] = error
+
+    return result
+
+
 @router.get("/user/{user_id}/subscription")
 async def api_get_user_subscription(
     user_id: str,
@@ -341,3 +429,9 @@ async def get_user_stats(user=Depends(get_supabase_user)):
     if not row:
         raise HTTPException(status_code=404, detail="No stats found for this user")
     return row
+
+@router.get("/stats/vehicles-by-country")
+async def get_vehicles_by_country_stats(user=Depends(get_supabase_user)):
+    """Returns vehicle distribution by country for display on insights page."""
+    countries = await get_vehicles_by_country()
+    return {"vehicles_by_country": countries}

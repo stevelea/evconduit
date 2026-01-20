@@ -20,6 +20,7 @@ type Vehicle = {
   vendor: string;
   lastSeen: string;
   isReachable: boolean;
+  countryCode?: string | null;
   information: {
     vin: string;
     brand: string;
@@ -32,6 +33,16 @@ type Vehicle = {
     isPluggedIn: boolean;
   };
 };
+
+// Convert country code to flag emoji
+function countryCodeToFlag(countryCode: string | null | undefined): string {
+  if (!countryCode || countryCode.length !== 2) return '';
+  const codePoints = countryCode
+    .toUpperCase()
+    .split('')
+    .map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
 
 export default function VehicleAdminPage() {
   const { user, accessToken } = useAuth();
@@ -87,7 +98,7 @@ export default function VehicleAdminPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {vehicles.map((v) => (
               <tr key={v.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.userName || '–'}</td>
+                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{countryCodeToFlag(v.countryCode)} {v.userName || '–'}</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.vendor}</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.information.model}</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.chargeState?.batteryLevel ?? '–'}%</td>
@@ -134,7 +145,7 @@ export default function VehicleAdminPage() {
         {vehicles.map((v) => (
           <Card key={v.id} className="p-4">
             <div className="flex justify-between items-center mb-2">
-              <div className="font-semibold text-gray-900">{v.userName || v.information.displayName}</div>
+              <div className="font-semibold text-gray-900">{countryCodeToFlag(v.countryCode)} {v.userName || v.information.displayName}</div>
               <Dialog>
                 <DialogTrigger asChild>
                   <Button size="icon" variant="secondary" onClick={() => setSelected(v)}>

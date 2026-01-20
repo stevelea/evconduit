@@ -45,8 +45,14 @@ TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER")
 
+# Admin notification phone number (for new vehicle alerts, etc.)
+ADMIN_PHONE_NUMBER = os.getenv("ADMIN_PHONE_NUMBER")
+
 # Redis Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# Pushover Configuration
+PUSHOVER_API_TOKEN = os.getenv("PUSHOVER_API_TOKEN")
 
 ENDPOINT_COST = {
     "/api/ha/status/": 1,

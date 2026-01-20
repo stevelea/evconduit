@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.auth.supabase_auth import get_supabase_user
 from app.logger import logger
 from app.services.brevo import add_or_update_brevo_contact
+from app.services.pushover_service import get_pushover_service
 from app.storage.poll_logs import count_polls_since, count_polls_in_period # NEW: Import count_polls_in_period
 from app.storage.settings import get_setting_by_name
 from app.storage.subscription import get_user_record, get_user_subscription # NEW: Import get_user_subscription
@@ -352,3 +353,195 @@ async def activate_pro_trial(user=Depends(get_supabase_user)):
         "message": "Pro trial activated successfully",
         "trial_ends_at": trial_ends_at.isoformat(),
     }
+
+
+# ============== Pushover Notification Settings ==============
+
+class PushoverSettingsResponse(BaseModel):
+    pushover_enabled: bool
+    pushover_user_key: Optional[str] = None
+    pushover_events: dict
+
+
+class UpdatePushoverSettingsRequest(BaseModel):
+    pushover_user_key: Optional[str] = None
+    pushover_enabled: Optional[bool] = None
+    pushover_events: Optional[dict] = None
+
+
+class ValidatePushoverKeyRequest(BaseModel):
+    user_key: str
+
+
+@router.get("/me/pushover", response_model=PushoverSettingsResponse)
+async def get_pushover_settings(user=Depends(get_supabase_user)):
+    """Get current user's Pushover notification settings."""
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Mask the user key for security (show only last 4 chars)
+    user_key = getattr(local_user, "pushover_user_key", None)
+    masked_key = None
+    if user_key:
+        masked_key = f"{'*' * (len(user_key) - 4)}{user_key[-4:]}" if len(user_key) > 4 else "****"
+
+    return PushoverSettingsResponse(
+        pushover_enabled=getattr(local_user, "pushover_enabled", False) or False,
+        pushover_user_key=masked_key,
+        pushover_events=getattr(local_user, "pushover_events", {}) or {
+            "charge_complete": True,
+            "charge_started": False,
+            "vehicle_offline": False,
+            "vehicle_online": False,
+        },
+    )
+
+
+@router.patch("/me/pushover")
+async def update_pushover_settings(
+    payload: UpdatePushoverSettingsRequest,
+    user=Depends(get_supabase_user)
+):
+    """Update user's Pushover notification settings."""
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update_data = {}
+
+    # If updating user key, validate it first
+    if payload.pushover_user_key is not None:
+        if payload.pushover_user_key == "":
+            # Clear the key
+            update_data["pushover_user_key"] = None
+            update_data["pushover_enabled"] = False
+        else:
+            # Validate the key
+            pushover = get_pushover_service()
+            validation = await pushover.validate_user_key(payload.pushover_user_key)
+            if not validation.get("valid"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=validation.get("message", "Invalid Pushover user key")
+                )
+            update_data["pushover_user_key"] = payload.pushover_user_key
+
+    if payload.pushover_enabled is not None:
+        # Can only enable if user has a valid key
+        if payload.pushover_enabled:
+            current_key = update_data.get("pushover_user_key") or getattr(local_user, "pushover_user_key", None)
+            if not current_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot enable Pushover without a valid user key"
+                )
+        update_data["pushover_enabled"] = payload.pushover_enabled
+
+    if payload.pushover_events is not None:
+        update_data["pushover_events"] = payload.pushover_events
+
+    if update_data:
+        await update_user(user_id=user_id, **update_data)
+        logger.info(f"[✅] User {user_id} updated Pushover settings")
+
+    return {"success": True, "message": "Pushover settings updated"}
+
+
+@router.post("/me/pushover/validate")
+async def validate_pushover_key(
+    payload: ValidatePushoverKeyRequest,
+    user=Depends(get_supabase_user)
+):
+    """Validate a Pushover user key without saving it."""
+    pushover = get_pushover_service()
+    result = await pushover.validate_user_key(payload.user_key)
+
+    if result.get("valid"):
+        return {
+            "valid": True,
+            "devices": result.get("devices", []),
+            "message": "User key is valid"
+        }
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("message", "Invalid user key")
+        )
+
+
+@router.post("/me/pushover/test")
+async def send_test_pushover_notification(user=Depends(get_supabase_user)):
+    """Send a test Pushover notification to the current user."""
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_key = getattr(local_user, "pushover_user_key", None)
+    if not user_key:
+        raise HTTPException(
+            status_code=400,
+            detail="No Pushover user key configured"
+        )
+
+    pushover = get_pushover_service()
+    result = await pushover.send_notification(
+        user_key=user_key,
+        title="EVConduit Test",
+        message="This is a test notification from EVConduit. Your Pushover integration is working correctly!",
+        sound="pushover"
+    )
+
+    if result.get("success"):
+        return {"success": True, "message": "Test notification sent"}
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("message", "Failed to send test notification")
+        )
+
+
+@router.post("/me/vehicles/refresh")
+async def refresh_my_vehicles(user: dict = Depends(get_supabase_user)):
+    """
+    Force a refresh of all vehicle data by polling Enode directly.
+    This bypasses webhook delivery and fetches fresh data immediately.
+    Returns the updated vehicle data.
+    """
+    from app.services.vehicle_polling import poll_vehicle_for_user
+
+    user_id = user["sub"]
+    logger.info(f"[refresh_my_vehicles] Manual refresh requested for user_id={user_id}")
+
+    try:
+        updated_vehicles = await poll_vehicle_for_user(user_id)
+        logger.info(f"[refresh_my_vehicles] Refreshed {len(updated_vehicles)} vehicles for user {user_id}")
+
+        # Return simplified vehicle info
+        vehicles_info = []
+        for v in updated_vehicles:
+            info = v.get("information", {})
+            charge = v.get("chargeState", {})
+            vehicles_info.append({
+                "id": v.get("id"),
+                "displayName": info.get("displayName") or f"{info.get('brand', '')} {info.get('model', '')}".strip(),
+                "batteryLevel": charge.get("batteryLevel"),
+                "isCharging": charge.get("isCharging"),
+                "lastSeen": v.get("lastSeen"),
+            })
+
+        return {
+            "success": True,
+            "vehicles_updated": len(updated_vehicles),
+            "vehicles": vehicles_info,
+            "message": f"Refreshed {len(updated_vehicles)} vehicle(s) from Enode"
+        }
+    except Exception as e:
+        logger.error(f"[refresh_my_vehicles] Error refreshing vehicles: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Error refreshing vehicle data: {str(e)}")

@@ -1,6 +1,7 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from app.storage.user import get_total_user_count, get_new_user_count
-from app.storage.vehicle import get_total_vehicle_count, get_new_vehicle_count
+from app.storage.vehicle import get_total_vehicle_count, get_new_vehicle_count, get_vehicles_by_country
 from app.storage.invoice import get_total_revenue, get_monthly_revenue, get_yearly_revenue
 from app.storage.subscription import count_subscriptions_by_plan, count_users_on_trial
 from app.auth.supabase_auth import get_supabase_user
@@ -136,3 +137,73 @@ async def get_users_on_trial(user=Depends(require_admin)):
     """
     count = await count_users_on_trial()
     return {"users_on_trial": count}
+
+
+@router.get("/insights/vehicles/by-country")
+async def get_vehicles_by_country_insight(user=Depends(require_admin)):
+    """
+    Returns the count of vehicles grouped by country.
+    Uses reverse geocoding from vehicle location data.
+    """
+    countries = await get_vehicles_by_country()
+    return {"vehicles_by_country": countries}
+
+
+@router.get("/insights/all")
+async def get_all_insights(user=Depends(require_admin)):
+    """
+    Returns all insights in a single request.
+    This is more efficient than making 15 separate API calls.
+    All queries are executed in parallel using asyncio.gather.
+    """
+    now = datetime.now()
+    year = now.year
+    month = now.month
+
+    # Execute all queries in parallel
+    results = await asyncio.gather(
+        get_total_user_count(),
+        get_new_user_count(1),
+        get_new_user_count(7),
+        get_new_user_count(30),
+        get_total_vehicle_count(),
+        get_new_vehicle_count(1),
+        get_new_vehicle_count(7),
+        get_new_vehicle_count(30),
+        get_total_revenue(),
+        get_monthly_revenue(year, month),
+        get_yearly_revenue(year),
+        count_subscriptions_by_plan("Basic"),
+        count_subscriptions_by_plan("Pro"),
+        count_users_on_trial(),
+        get_vehicles_by_country(),
+        return_exceptions=True
+    )
+
+    # Map results to response keys
+    keys = [
+        "total_users",
+        "new_users_1day",
+        "new_users_7days",
+        "new_users_30days",
+        "total_vehicles",
+        "new_vehicles_1day",
+        "new_vehicles_7days",
+        "new_vehicles_30days",
+        "total_revenue",
+        "monthly_revenue",
+        "yearly_revenue",
+        "basic_subscriptions",
+        "pro_subscriptions",
+        "users_on_trial",
+        "vehicles_by_country",
+    ]
+
+    response = {}
+    for key, result in zip(keys, results):
+        if isinstance(result, Exception):
+            response[key] = None
+        else:
+            response[key] = result
+
+    return response

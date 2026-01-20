@@ -24,6 +24,8 @@ from app.dependencies.auth import get_current_user
 from app.logger import logger
 from app.storage.telemetry import log_api_telemetry
 from app.services.webhook_scheduler import webhook_scheduler
+from app.services.vehicle_polling import vehicle_polling_scheduler
+from app.services.metrics import track_api_request
 
 # Initialize Sentry
 sentry_sdk.init(
@@ -44,9 +46,17 @@ async def lifespan(app: FastAPI):
     await webhook_scheduler.start()
     logger.info("✅ Webhook health scheduler started")
 
+    logger.info("🔄 Starting vehicle polling scheduler...")
+    await vehicle_polling_scheduler.start()
+    logger.info("✅ Vehicle polling scheduler started")
+
     yield
 
     # Shutdown
+    logger.info("🛑 Stopping vehicle polling scheduler...")
+    await vehicle_polling_scheduler.stop()
+    logger.info("✅ Vehicle polling scheduler stopped")
+
     logger.info("🛑 Stopping webhook health scheduler...")
     await webhook_scheduler.stop()
     logger.info("✅ Webhook health scheduler stopped")
@@ -157,6 +167,13 @@ async def telemetry_middleware(request: Request, call_next):
                 if path.startswith(prefix):
                     cost_tokens = cost
                     break
+
+        # Track metrics (lightweight, in-memory)
+        track_api_request(
+            endpoint=path,
+            success=status < 400,
+            response_time_ms=duration_ms
+        )
 
         # Async log
         asyncio.create_task(

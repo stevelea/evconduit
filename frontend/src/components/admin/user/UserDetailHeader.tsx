@@ -2,25 +2,63 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import type { UserDetails } from "@/types/userDetails";
 import { FieldWithCopy } from "@/components/admin/user/FieldWithCopy";
+import { useSupabase } from "@/lib/supabaseContext";
 
 type Props = {
   user: UserDetails;
   loading: boolean;
   updateUserField: <K extends keyof UserDetails>(field: K, value: UserDetails[K]) => Promise<boolean>;
+  onRefresh?: () => void;
 };
 
-export function UserDetailHeader({ user, loading, updateUserField }: Props) {
+export function UserDetailHeader({ user, loading, updateUserField, onRefresh }: Props) {
   const [saving, setSaving] = useState<string | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ reachable: boolean; error?: string } | null>(null);
+  const { supabase } = useSupabase();
 
   const handleSwitch = async (field: keyof UserDetails, value: boolean) => {
     setSaving(field);
     await updateUserField(field, value);
     setSaving(null);
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const res = await fetch(`${apiUrl}/admin/users/${user.id}/check-ha-webhook`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await res.json();
+      setTestResult({ reachable: data.reachable, error: data.error });
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch {
+      setTestResult({ reachable: false, error: 'Failed to test connection' });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const formatDateTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return 'Never';
+    const date = new Date(dateStr);
+    return date.toLocaleString();
   };
 
   if (loading) {
@@ -148,6 +186,65 @@ export function UserDetailHeader({ user, loading, updateUserField }: Props) {
             </div>
           )}
         </div>
+
+        {/* HA Webhook Stats */}
+        {user.ha_webhook_id && user.ha_external_url && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <h4 className="text-md font-semibold text-gray-700 mb-3">Push Statistics</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-green-50 rounded-lg p-3">
+                <div className="text-sm text-gray-600">Success Count</div>
+                <div className="text-2xl font-bold text-green-600">{user.ha_push_success_count ?? 0}</div>
+              </div>
+              <div className="bg-red-50 rounded-lg p-3">
+                <div className="text-sm text-gray-600">Fail Count</div>
+                <div className="text-2xl font-bold text-red-600">{user.ha_push_fail_count ?? 0}</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-sm text-gray-600">Last Push</div>
+                <div className="text-sm font-medium text-gray-800">{formatDateTime(user.ha_last_push_at)}</div>
+              </div>
+            </div>
+
+            {/* URL Reachability */}
+            <div className="mt-4 flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <label className="font-semibold text-gray-700">URL Reachable:</label>
+                {user.ha_url_reachable === null || user.ha_url_reachable === undefined ? (
+                  <span className="text-gray-500 font-medium">Not checked</span>
+                ) : user.ha_url_reachable ? (
+                  <span className="text-green-600 font-medium">Yes</span>
+                ) : (
+                  <span className="text-red-600 font-medium">No</span>
+                )}
+              </div>
+              {user.ha_last_check_at && (
+                <div className="text-sm text-gray-500">
+                  Last checked: {formatDateTime(user.ha_last_check_at)}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestConnection}
+                disabled={testingConnection}
+              >
+                {testingConnection ? 'Testing...' : 'Test Connection'}
+              </Button>
+            </div>
+
+            {/* Test Result */}
+            {testResult && (
+              <div className={`mt-3 p-3 rounded-lg ${testResult.reachable ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {testResult.reachable ? (
+                  <span>Connection successful - URL is reachable</span>
+                ) : (
+                  <span>Connection failed{testResult.error ? `: ${testResult.error}` : ''}</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

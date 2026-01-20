@@ -21,7 +21,8 @@ from ..config import (
     TWILIO_ACCOUNT_SID,
     TWILIO_AUTH_TOKEN,
     TWILIO_FROM_NUMBER,
-    REDIS_URL
+    REDIS_URL,
+    ADMIN_PHONE_NUMBER
 )
 from ..lib.supabase import get_supabase_admin_client
 
@@ -456,6 +457,43 @@ class SMSService:
             return {
                 "success": False,
                 "message": "An error occurred while checking verification status"
+            }
+
+    async def send_admin_notification(self, message: str) -> Dict[str, Any]:
+        """Send an SMS notification to the admin phone number"""
+        try:
+            if not self.enabled:
+                logger.warning("📱 SMS not enabled - skipping admin notification")
+                return {
+                    "success": False,
+                    "message": "SMS service is not configured"
+                }
+
+            if not ADMIN_PHONE_NUMBER:
+                logger.warning("📱 ADMIN_PHONE_NUMBER not configured - skipping notification")
+                return {
+                    "success": False,
+                    "message": "Admin phone number not configured"
+                }
+
+            sms_result = self.client.messages.create(
+                body=message,
+                from_=TWILIO_FROM_NUMBER,
+                to=ADMIN_PHONE_NUMBER
+            )
+
+            logger.info(f"✅ Admin SMS sent: {sms_result.sid}")
+            return {
+                "success": True,
+                "message": "Admin notification sent successfully",
+                "sid": sms_result.sid
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Error sending admin SMS: {e}")
+            return {
+                "success": False,
+                "message": f"Failed to send admin notification: {str(e)}"
             }
 
 # Global instance

@@ -60,7 +60,31 @@
       "Bash(git -C /root/evconduit rev-parse:*)",
       "Bash(git init:*)",
       "Bash(git remote add:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(git reset:*)",
+      "Bash(git rm:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh repo list:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git tag:*)",
+      "Bash(gh release create v1.4.0 --title \"v1.4.0\" --notes \"$\\(cat <<''EOF''\n## What''s New\n\n### New Sensor: Last Seen Local\n- Converts UTC `lastSeen` timestamp to Home Assistant''s local timezone\n- Displays as formatted datetime: `YYYY-MM-DD HH:MM:SS`\n- Includes extra attributes:\n  - `utc_time`: Original UTC timestamp\n  - `timezone`: HA''s configured timezone\n\n### Bug Fixes\n- Fixed entities going \"unknown\" when API errors occur \\(now preserves previous data\\)\nEOF\n\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(pip install:*)",
+      "Bash(apt-get update:*)",
+      "Bash(apt-get install:*)",
+      "Bash(PGPASSWORD=\"N1cepair\" psql:*)",
+      "Bash(PGPASSWORD=\"N1cepairN1ce!\" psql:*)",
+      "Bash(PGPASSWORD='N1cepairN1ce!' psql:*)",
+      "Bash(PGPASSWORD='N1cepairN1ce!' psql -h db.pynxbiclcdhkstglldvh.supabase.co -p 5432 -U postgres -d postgres -c \"\nSELECT \n  COUNT\\(*\\) as total_users,\n  COUNT\\(*\\) FILTER \\(WHERE linked_vehicle_count = 0\\) as no_vehicles,\n  COUNT\\(*\\) FILTER \\(WHERE linked_vehicle_count > 0\\) as has_vehicles\nFROM users;\n\")",
+      "Bash(npm run lint)",
+      "Bash(identify:*)",
+      "Bash(xxd:*)",
+      "WebFetch(domain:pushover.net)",
+      "Bash(docker cp:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:developers.enode.com)",
+      "Bash(python -m py_compile:*)",
+      "Bash(npx eslint:*)"
     ]
   }
 }

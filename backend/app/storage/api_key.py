@@ -3,7 +3,8 @@ backend/app/storage/api_key.py
 
 Storage functions for API key management in EVLink backend.
 """
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import Any, Optional
 from uuid import uuid4
 
 from app.lib.api_key_utils import generate_api_key, hash_api_key
@@ -16,6 +17,28 @@ import logging
 logger = logging.getLogger(__name__)
 
 supabase = get_supabase_admin_client()
+
+# Cache for API key lookups (reduces DB queries for frequent HA polling)
+_api_key_cache: dict[str, dict[str, Any]] = {}
+API_KEY_CACHE_TTL = 60  # 1 minute TTL
+
+
+def _get_cached_user(key_hash: str) -> User | None:
+    """Get cached user for API key hash."""
+    if key_hash in _api_key_cache:
+        entry = _api_key_cache[key_hash]
+        if datetime.utcnow() < entry["expires_at"]:
+            return entry["user"]
+        del _api_key_cache[key_hash]
+    return None
+
+
+def _set_cached_user(key_hash: str, user: User) -> None:
+    """Cache user for API key hash."""
+    _api_key_cache[key_hash] = {
+        "user": user,
+        "expires_at": datetime.utcnow() + timedelta(seconds=API_KEY_CACHE_TTL)
+    }
 
 def create_api_key(user_id: str) -> str:
     """
@@ -86,9 +109,17 @@ def get_api_key_info(user_id: str) -> Optional[dict]:
 async def get_user_by_api_key(api_key: str) -> User | None:
     """
     Returns a User if the provided API key is valid and active.
+    Uses caching to reduce DB queries for frequent HA polling.
     """
     try:
         hashed = hash_api_key(api_key)
+
+        # Check cache first
+        cached_user = _get_cached_user(hashed)
+        if cached_user is not None:
+            logger.debug("[get_user_by_api_key] Cache hit for API key")
+            return cached_user
+
         logger.info("[get_user_by_api_key] Lookup for API key hash=%s", hashed)
         response = supabase.table("api_keys") \
             .select("user_id") \
@@ -106,7 +137,10 @@ async def get_user_by_api_key(api_key: str) -> User | None:
             logger.warning("[get_user_by_api_key] Invalid or inactive API key")
             return None
 
-        return await get_user_by_id(row["user_id"])
+        user = await get_user_by_id(row["user_id"])
+        if user:
+            _set_cached_user(hashed, user)
+        return user
     except Exception as e:
         logger.error("[get_user_by_api_key] Exception during lookup: %s", e, exc_info=True)
         return None

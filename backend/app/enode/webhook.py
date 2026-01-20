@@ -60,3 +60,18 @@ async def delete_webhook(webhook_id: str):
         if response.status_code == 204:
             return {"deleted": True}
         response.raise_for_status()
+
+
+async def test_webhook(webhook_id: str):
+    """
+    Sends a test event to the webhook endpoint.
+    This also reactivates inactive webhooks according to Enode docs.
+    """
+    token = await get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{ENODE_BASE_URL}/webhooks/{webhook_id}/test"
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers)
+        logger.info(f"[📡 ENODE] Test webhook {webhook_id}: status={response.status_code}")
+        response.raise_for_status()
+        return response.json()

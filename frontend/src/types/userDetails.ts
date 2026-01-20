@@ -13,4 +13,9 @@ export type UserDetails = {
   subscription_status?: string | null;
   ha_webhook_id?: string | null;
   ha_external_url?: string | null;
+  ha_push_success_count?: number;
+  ha_push_fail_count?: number;
+  ha_last_push_at?: string | null;
+  ha_last_check_at?: string | null;
+  ha_url_reachable?: boolean | null;
 };

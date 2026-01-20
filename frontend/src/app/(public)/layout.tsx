@@ -3,6 +3,7 @@
 import { Toaster } from 'sonner';
 import { RegistrationProvider } from '@/contexts/RegistrationContext';
 import { SupabaseProvider } from '@/components/SupabaseProvider';
+import { UserProvider } from '@/contexts/UserContext';
 import Footer from '@/components/layout/Footer';
 import Script from 'next/script';
 import NewsletterModal from '@/components/NewsletterModal';
@@ -22,10 +23,12 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <I18nProvider>
         <RegistrationProvider>
           <SupabaseProvider>
-            <NavbarPublic />
-            {children}
-            <Footer />
-            <NewsletterModal />
+            <UserProvider>
+              <NavbarPublic />
+              {children}
+              <Footer />
+              <NewsletterModal />
+            </UserProvider>
           </SupabaseProvider>
         </RegistrationProvider>
       </I18nProvider>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { NotificationSettingsPanel } from "@/components/shared/NotificationSettingsPanel"
 import { SMSVerificationModal } from "@/components/shared/SMSVerificationModal"
+import { PushoverSettings } from "@/components/settings/PushoverSettings"
 import { useNotificationSettings } from "@/hooks/useNotificationSettings"
 import { toast } from "sonner"
 
@@ -151,17 +152,21 @@ export default function NotificationSettingsPage() {
         Notification Settings
       </h1>
 
-      <NotificationSettingsPanel
-        phoneNumber={localPhoneNumber}
-        isPhoneVerified={settings?.phone_verified || false}
-        onPhoneNumberChange={setLocalPhoneNumber}
-        onVerifyPhone={handleVerifyPhone}
-        preferences={settings?.notification_preferences ?? DEFAULT_PREFERENCES}
-        onPreferencesChange={handlePreferencesChange}
-        onSave={() => updatePreferences(settings?.notification_preferences ?? DEFAULT_PREFERENCES)}
-        isSaving={saving}
-        smsCredits={settings?.sms_credits || 0}
-      />
+      <div className="space-y-6">
+        <PushoverSettings />
+
+        <NotificationSettingsPanel
+          phoneNumber={localPhoneNumber}
+          isPhoneVerified={settings?.phone_verified || false}
+          onPhoneNumberChange={setLocalPhoneNumber}
+          onVerifyPhone={handleVerifyPhone}
+          preferences={settings?.notification_preferences ?? DEFAULT_PREFERENCES}
+          onPreferencesChange={handlePreferencesChange}
+          onSave={() => updatePreferences(settings?.notification_preferences ?? DEFAULT_PREFERENCES)}
+          isSaving={saving}
+          smsCredits={settings?.sms_credits || 0}
+        />
+      </div>
 
       <SMSVerificationModal
         open={isVerificationModalOpen}

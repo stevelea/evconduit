@@ -16,9 +16,6 @@ export default function HeroSection() {
     <section className="relative overflow-hidden text-white py-8 bg-indigo-700 min-h-[600px]">
       <Image src="/ev_car.png" alt="" fill className="object-cover opacity-10 z-0" />
       <div className="max-w-5xl mx-auto px-6 text-center relative z-10">
-        <span className="inline-block text-xs font-semibold uppercase bg-yellow-400 text-black px-3 py-1 rounded-full mb-4">
-          {t('landing.hero.badge')}
-        </span>
         <h1 className="text-4xl sm:text-5xl font-bold leading-snug mb-3">
           {t('landing.hero.title')}
         </h1>

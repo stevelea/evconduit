@@ -37,7 +37,7 @@ async def list_all_vehicles(user=Depends(require_admin)):
         vehicles = data.get("data", [])
         logger.info(f"✅ Fetched {len(vehicles)} vehicle(s) from Enode")
 
-        # Enrich vehicles with user info (name, email)
+        # Enrich vehicles with user info (name, email) and country_code from database
         supabase = get_supabase_admin_client()
         user_ids = list(set(v.get("userId") for v in vehicles if v.get("userId")))
 
@@ -47,6 +47,15 @@ async def list_all_vehicles(user=Depends(require_admin)):
             for u in (users_res.data or []):
                 user_map[u["id"]] = {"name": u.get("name"), "email": u.get("email")}
 
+        # Fetch country codes from our vehicles table
+        vehicle_ids = [v.get("id") for v in vehicles if v.get("id")]
+        country_map = {}
+        if vehicle_ids:
+            vehicles_res = supabase.table("vehicles").select("vehicle_id, country_code").in_("vehicle_id", vehicle_ids).execute()
+            for veh in (vehicles_res.data or []):
+                if veh.get("country_code"):
+                    country_map[veh["vehicle_id"]] = veh["country_code"]
+
         for v in vehicles:
             user_id = v.get("userId")
             if user_id and user_id in user_map:
@@ -55,6 +64,8 @@ async def list_all_vehicles(user=Depends(require_admin)):
             else:
                 v["userName"] = None
                 v["userEmail"] = None
+            # Add country code
+            v["countryCode"] = country_map.get(v.get("id"))
 
         return vehicles
     except Exception as e:

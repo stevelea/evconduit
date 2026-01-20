@@ -1,12 +1,14 @@
 # backend/app/api/admin/users.py
 """Admin endpoints for managing user accounts."""
 
+import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
+import httpx
 import reverse_geocode
 from app.auth.supabase_auth import get_supabase_user
-from app.storage.user import get_all_users_with_enode_info, set_user_approval, delete_user
+from app.storage.user import get_all_users_with_enode_info, set_user_approval, delete_user, update_ha_url_check
 from app.enode.user import delete_enode_user
 from app.lib.supabase import get_supabase_admin_client
 
@@ -77,9 +79,17 @@ async def get_user_details(user_id: str, user=Depends(require_admin)):
             }
 
             # Extract location from vehicle_cache if available
-            cache = v.get("vehicle_cache") or {}
+            cache_raw = v.get("vehicle_cache")
+            cache = {}
+            if isinstance(cache_raw, str):
+                try:
+                    cache = json.loads(cache_raw)
+                except json.JSONDecodeError:
+                    pass
+            elif isinstance(cache_raw, dict):
+                cache = cache_raw
             location = cache.get("location")
-            if location:
+            if location and isinstance(location, dict):
                 lat = location.get("latitude")
                 lon = location.get("longitude")
                 vehicle_data["location"] = {
@@ -183,4 +193,114 @@ async def update_user_fields(
         raise
     except Exception as e:
         logger.error(f"❌ Error updating user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/users/{user_id}/check-ha-webhook")
+async def check_ha_webhook(user_id: str, current_user=Depends(require_admin)):
+    """Test HA webhook URL reachability for a user."""
+    logger.info(f"👮 Admin {current_user.get('sub') or current_user.get('id')} checking HA webhook for user {user_id}")
+    supabase = get_supabase_admin_client()
+
+    try:
+        # Get user's HA webhook settings
+        user_res = supabase.table("users").select("ha_webhook_id, ha_external_url").eq("id", user_id).maybe_single().execute()
+        if not user_res.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        ha_webhook_id = user_res.data.get("ha_webhook_id")
+        ha_external_url = user_res.data.get("ha_external_url")
+
+        if not ha_webhook_id or not ha_external_url:
+            update_ha_url_check(user_id, reachable=False)
+            return {
+                "reachable": False,
+                "error": "HA webhook not configured for this user",
+                "ha_webhook_id": ha_webhook_id,
+                "ha_external_url": ha_external_url,
+            }
+
+        # Test the HA webhook URL with a POST request containing a test event
+        url = f"{ha_external_url.rstrip('/')}/api/webhook/{ha_webhook_id}"
+        logger.info(f"Testing HA webhook URL: {url}")
+
+        # Send a test event that HA will receive but won't match typical automations
+        test_payload = {
+            "event": "connection_test",
+            "source": "evconduit_admin",
+            "test": True,
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(url, json=test_payload, timeout=10.0, follow_redirects=True)
+                # Any HTTP response means the URL is reachable
+                # HA may return 200, 400, or other codes depending on automation config
+                reachable = True
+                status_code = resp.status_code
+                error = None
+            except httpx.TimeoutException:
+                reachable = False
+                status_code = None
+                error = "Connection timed out"
+            except httpx.ConnectError as e:
+                reachable = False
+                status_code = None
+                error = f"Connection error: {str(e)}"
+            except Exception as e:
+                reachable = False
+                status_code = None
+                error = str(e)
+
+        # Update the database with check result
+        update_ha_url_check(user_id, reachable=reachable)
+
+        result = {
+            "reachable": reachable,
+            "url_tested": url,
+            "ha_webhook_id": ha_webhook_id,
+            "ha_external_url": ha_external_url,
+        }
+        if status_code is not None:
+            result["status_code"] = status_code
+        if error:
+            result["error"] = error
+
+        logger.info(f"✅ HA webhook check for user {user_id}: reachable={reachable}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error checking HA webhook for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/admin/users/{user_id}/logs")
+async def get_user_logs(user_id: str, limit: int = 50, current_user=Depends(require_admin)):
+    """Get webhook logs and poll logs for a specific user."""
+    logger.info(f"👮 Admin {current_user.get('sub') or current_user.get('id')} fetching logs for user {user_id}")
+    supabase = get_supabase_admin_client()
+
+    try:
+        # Fetch webhook logs
+        webhook_res = supabase.table("webhook_logs").select(
+            "id, created_at, event_type, vehicle_id"
+        ).eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
+        webhook_logs = webhook_res.data or []
+
+        # Fetch poll logs
+        poll_res = supabase.table("poll_logs").select(
+            "id, created_at, endpoint, vehicle_id"
+        ).eq("user_id", user_id).order("created_at", desc=True).limit(limit).execute()
+        poll_logs = poll_res.data or []
+
+        logger.info(f"✅ Found {len(webhook_logs)} webhook logs and {len(poll_logs)} poll logs for user {user_id}")
+        return {
+            "webhook_logs": webhook_logs,
+            "poll_logs": poll_logs,
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error fetching logs for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -240,6 +240,29 @@ Required environment variables:
 2. Apply changes to local development database
 3. Update TypeScript types if needed
 
+### Updating Release Notes
+**IMPORTANT**: When implementing new features or bug fixes, always update the release notes.
+
+1. Edit `frontend/src/app/(app)/docs/updates/page.tsx`
+2. Add entries to the current version's arrays:
+   - `features`: New functionality added
+   - `fixes`: Bugs that were fixed
+   - `improvements`: Performance or UX enhancements
+3. Update the `highlights` string to summarize key changes
+4. If starting a new day's work, add a new release entry at the top of the `releases` array
+
+Example entry:
+```typescript
+{
+  version: '2026.01.20',
+  date: 'January 20, 2026',
+  highlights: 'Brief summary of main changes',
+  features: ['New feature description'],
+  fixes: ['Bug fix description'],
+  improvements: ['Improvement description'],
+}
+```
+
 ## File Structure Notes
 
 - `tasks/` - Development task tracking and templates

@@ -1,6 +1,7 @@
 # backend/app/storage/user.py
 
 import os
+from typing import Any
 from supabase import create_client, Client
 from app.lib.supabase import get_supabase_admin_client
 from app.enode.user import get_all_users as get_enode_users
@@ -14,12 +15,39 @@ from datetime import datetime, timezone, timedelta
 supabase: Client = get_supabase_admin_client()
 
 # -------------------------------------------------------------------
+# Simple TTL cache for expensive operations
+# -------------------------------------------------------------------
+_cache: dict[str, dict[str, Any]] = {}
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
+
+def _get_cached(key: str) -> Any | None:
+    """Get value from cache if not expired."""
+    if key in _cache:
+        entry = _cache[key]
+        if datetime.utcnow() < entry["expires_at"]:
+            logger.debug(f"[CACHE HIT] {key}")
+            return entry["value"]
+        del _cache[key]
+    return None
+
+
+def _set_cached(key: str, value: Any, ttl_seconds: int = CACHE_TTL_SECONDS) -> None:
+    """Set value in cache with TTL."""
+    _cache[key] = {
+        "value": value,
+        "expires_at": datetime.utcnow() + timedelta(seconds=ttl_seconds)
+    }
+    logger.debug(f"[CACHE SET] {key} (TTL: {ttl_seconds}s)")
+
+# -------------------------------------------------------------------
 # ORIGINAL FUNCTIONS (restored in full)
 # -------------------------------------------------------------------
 
 async def get_all_users_with_enode_info():
     """
     Fetches all users from Supabase and enriches them with Enode information, vehicles, and API usage stats.
+    Uses caching for Enode data and SQL aggregation for poll counts to improve performance.
     """
     try:
         logger.info("🔎 Fetching Supabase users...")
@@ -27,39 +55,58 @@ async def get_all_users_with_enode_info():
         users = res.data or []
         logger.info(f"ℹ️ Found {len(users)} users in Supabase")
 
+        # Fetch Enode users with caching (5 min TTL)
         logger.info("🔄 Fetching Enode users...")
-        enode_data = await get_enode_users()
-        enode_users = enode_data.get("data", [])
-        enode_lookup = {u["id"]: u for u in enode_users}
-        logger.info(f"ℹ️ Found {len(enode_users)} users in Enode")
+        enode_lookup = _get_cached("enode_users_lookup")
+        if enode_lookup is None:
+            enode_data = await get_enode_users()
+            enode_users = enode_data.get("data", [])
+            enode_lookup = {u["id"]: u for u in enode_users}
+            _set_cached("enode_users_lookup", enode_lookup)
+            logger.info(f"ℹ️ Found {len(enode_users)} users in Enode (fresh)")
+        else:
+            logger.info("ℹ️ Using cached Enode users data")
 
         # Fetch all vehicles from database
         logger.info("🚗 Fetching vehicles from database...")
-        vehicles_res = supabase.table("vehicles").select("vehicle_id, user_id, vendor").execute()
+        vehicles_res = supabase.table("vehicles").select("vehicle_id, user_id, vendor, country_code").execute()
         vehicles = vehicles_res.data or []
-        # Group vehicles by user_id
+        # Group vehicles by user_id and track country codes
         vehicles_by_user = {}
+        country_by_user = {}
         for v in vehicles:
             uid = v.get("user_id")
             if uid not in vehicles_by_user:
                 vehicles_by_user[uid] = []
             vehicles_by_user[uid].append({
                 "vehicle_id": v.get("vehicle_id"),
-                "vendor": v.get("vendor")
+                "vendor": v.get("vendor"),
+                "country_code": v.get("country_code")
             })
+            # Store first country_code found for user
+            if uid not in country_by_user and v.get("country_code"):
+                country_by_user[uid] = v.get("country_code")
         logger.info(f"ℹ️ Found {len(vehicles)} vehicles in database")
 
-        # Fetch poll counts for all users in the last 30 days
+        # Fetch poll counts using SQL aggregation (much faster than fetching all rows)
         logger.info("📊 Fetching API usage stats...")
-        thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        poll_res = supabase.table("poll_logs").select("user_id").gte("created_at", thirty_days_ago).execute()
-        poll_logs = poll_res.data or []
-
-        # Count polls per user
         poll_counts = {}
-        for log in poll_logs:
-            uid = log.get("user_id")
-            poll_counts[uid] = poll_counts.get(uid, 0) + 1
+        try:
+            # Use RPC function for efficient GROUP BY aggregation
+            poll_res = supabase.rpc("get_poll_counts_by_user", {"days_ago": 30}).execute()
+            if poll_res.data:
+                for row in poll_res.data:
+                    poll_counts[row["user_id"]] = row["poll_count"]
+                logger.info(f"ℹ️ Got poll counts for {len(poll_counts)} users via RPC")
+        except Exception as rpc_err:
+            # Fallback to old method if RPC not available
+            logger.warning(f"⚠️ RPC fallback: {rpc_err}")
+            thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+            poll_res = supabase.table("poll_logs").select("user_id").gte("created_at", thirty_days_ago).execute()
+            poll_logs = poll_res.data or []
+            for log in poll_logs:
+                uid = log.get("user_id")
+                poll_counts[uid] = poll_counts.get(uid, 0) + 1
 
         enriched = []
         for user in users:
@@ -79,6 +126,7 @@ async def get_all_users_with_enode_info():
                 "api_calls_30d": poll_counts.get(uid, 0),
                 "vehicles": user_vehicles,
                 "vehicle_count": len(user_vehicles),
+                "country_code": country_by_user.get(uid),
             })
 
         return enriched
@@ -135,7 +183,7 @@ async def get_user_by_id(user_id: str) -> User | None:
     """
     try:
         response = supabase.table("users") \
-            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at") \
+            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at, pushover_user_key, pushover_enabled, pushover_events") \
             .eq("id", user_id) \
             .maybe_single() \
             .execute()
@@ -423,6 +471,31 @@ def get_ha_webhook_settings(user_id: str) -> dict | None:
     except Exception as e:
         logger.error(f"[❌ get_ha_webhook_settings] {e}")
         return None
+
+
+def get_ha_webhook_stats(user_id: str) -> dict | None:
+    """Retrieves Home Assistant webhook stats for a user including push counts and reachability."""
+    try:
+        result = supabase.table("users") \
+            .select("ha_webhook_id, ha_external_url, ha_push_success_count, ha_push_fail_count, ha_last_push_at, ha_last_check_at, ha_url_reachable") \
+            .eq("id", user_id) \
+            .maybe_single() \
+            .execute()
+
+        if result.data:
+            return {
+                "ha_webhook_id": result.data.get("ha_webhook_id"),
+                "ha_external_url": result.data.get("ha_external_url"),
+                "push_success_count": result.data.get("ha_push_success_count") or 0,
+                "push_fail_count": result.data.get("ha_push_fail_count") or 0,
+                "last_push_at": result.data.get("ha_last_push_at"),
+                "last_check_at": result.data.get("ha_last_check_at"),
+                "url_reachable": result.data.get("ha_url_reachable"),
+            }
+        return None
+    except Exception as e:
+        logger.error(f"[❌ get_ha_webhook_stats] {e}")
+        return None
       
 async def update_user_subscription(user_id: str, tier: str, status: str = "active"):
     """Update the user's tier (e.g. 'free', 'basic', 'pro') and status (e.g. 'active', 'canceled')."""
@@ -668,16 +741,75 @@ async def create_user(user_id: str, email: str, name: str = None) -> User | None
             "is_on_trial": False,
             "trial_ends_at": None
         }
-        
+
         response = supabase.table("users").insert(user_data).execute()
-        
+
         if response.data:
             logger.info(f"✅ Created new user: {user_id} ({email})")
             return User(**response.data[0])
         else:
             logger.error(f"[❌] Failed to create user {user_id}")
             return None
-            
+
     except Exception as e:
         logger.error(f"[❌ create_user] Error creating user {user_id}: {e}")
         return None
+
+
+def update_ha_push_stats(user_id: str, success: bool) -> None:
+    """
+    Update HA webhook push statistics for a user.
+    Increments success or fail count and updates last push timestamp.
+    """
+    try:
+        # First get current counts
+        result = supabase.table("users") \
+            .select("ha_push_success_count, ha_push_fail_count") \
+            .eq("id", user_id) \
+            .maybe_single() \
+            .execute()
+
+        if not result.data:
+            logger.warning(f"[⚠️] update_ha_push_stats: User {user_id} not found")
+            return
+
+        current_success = result.data.get("ha_push_success_count") or 0
+        current_fail = result.data.get("ha_push_fail_count") or 0
+
+        # Update counts based on success/failure
+        update_data = {
+            "ha_last_push_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if success:
+            update_data["ha_push_success_count"] = current_success + 1
+        else:
+            update_data["ha_push_fail_count"] = current_fail + 1
+
+        supabase.table("users") \
+            .update(update_data) \
+            .eq("id", user_id) \
+            .execute()
+
+        logger.debug(f"[📊] Updated HA push stats for {user_id}: success={success}")
+    except Exception as e:
+        logger.error(f"[❌ update_ha_push_stats] {e}")
+
+
+def update_ha_url_check(user_id: str, reachable: bool) -> None:
+    """
+    Update HA URL reachability check result for a user.
+    """
+    try:
+        update_data = {
+            "ha_last_check_at": datetime.now(timezone.utc).isoformat(),
+            "ha_url_reachable": reachable,
+        }
+
+        supabase.table("users") \
+            .update(update_data) \
+            .eq("id", user_id) \
+            .execute()
+
+        logger.info(f"[📊] Updated HA URL check for {user_id}: reachable={reachable}")
+    except Exception as e:
+        logger.error(f"[❌ update_ha_url_check] {e}")

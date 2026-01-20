@@ -2,13 +2,14 @@
 
 // app/(app)/admin/users/[id]/page.tsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from 'next/navigation';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUserDetails } from "@/hooks/useUserDetails";
 import { UserDetailHeader } from "@/components/admin/user/UserDetailHeader";
 import { Card } from "@/components/ui/card";
+import { Webhook, Activity } from "lucide-react";
 
 /**
  * Convert a 2-letter country code to a flag emoji.
@@ -28,8 +29,15 @@ export default function AdminUserDetailPage() {
   const params = useParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
 
-  const { user, vehicles, loading, updateUserField } = useUserDetails(id);
+  const { user, vehicles, webhookLogs, pollLogs, logsLoading, loading, updateUserField, refetch, fetchLogs } = useUserDetails(id);
   const [tab, setTab] = useState("vehicles");
+
+  // Fetch logs when switching to logs tab
+  useEffect(() => {
+    if (tab === "logs" && webhookLogs.length === 0 && pollLogs.length === 0) {
+      fetchLogs();
+    }
+  }, [tab, webhookLogs.length, pollLogs.length, fetchLogs]);
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-8">
@@ -39,6 +47,7 @@ export default function AdminUserDetailPage() {
             user={user}
             loading={loading}
             updateUserField={updateUserField}
+            onRefresh={refetch}
           />
         )}
         {!user && !loading && (
@@ -108,14 +117,73 @@ export default function AdminUserDetailPage() {
         </TabsContent>
 
         <TabsContent value="logs">
-          <div className="mt-4">
-            {loading ? (
-              <Skeleton className="h-8 w-32 bg-indigo-100" />
+          <div className="mt-4 space-y-6">
+            {logsLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-full bg-indigo-100" />
+                <Skeleton className="h-8 w-full bg-indigo-100" />
+                <Skeleton className="h-8 w-full bg-indigo-100" />
+              </div>
             ) : user ? (
-              <span>
-                Logs will go here for{" "}
-                <span className="font-mono">{user.id}</span>
-              </span>
+              <>
+                {/* Webhook Logs */}
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2 mb-3">
+                    <Webhook className="w-5 h-5 text-indigo-600" />
+                    Webhook Logs ({webhookLogs.length})
+                  </h3>
+                  {webhookLogs.length > 0 ? (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {webhookLogs.map((log) => (
+                        <Card key={log.id} className="p-3 text-sm">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="font-medium text-indigo-700">{log.event_type}</span>
+                              <div className="text-xs text-gray-500 font-mono mt-1">
+                                Vehicle: {log.vehicle_id?.slice(0, 12)}...
+                              </div>
+                            </div>
+                            <span className="text-xs text-gray-400">
+                              {new Date(log.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">No webhook logs found.</p>
+                  )}
+                </div>
+
+                {/* Poll Logs */}
+                <div>
+                  <h3 className="text-lg font-semibold flex items-center gap-2 mb-3">
+                    <Activity className="w-5 h-5 text-green-600" />
+                    Poll Logs ({pollLogs.length})
+                  </h3>
+                  {pollLogs.length > 0 ? (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {pollLogs.map((log) => (
+                        <Card key={log.id} className="p-3 text-sm">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="font-medium text-green-700">{log.endpoint}</span>
+                              <div className="text-xs text-gray-500 font-mono mt-1">
+                                Vehicle: {log.vehicle_id?.slice(0, 12)}...
+                              </div>
+                            </div>
+                            <span className="text-xs text-gray-400">
+                              {new Date(log.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">No poll logs found.</p>
+                  )}
+                </div>
+              </>
             ) : (
               <span className="text-red-600">
                 No user to show logs for.

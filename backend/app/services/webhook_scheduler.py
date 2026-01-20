@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from app.storage.webhook_monitor import monitor_webhook_health
 from app.storage.webhook import sync_webhook_subscriptions_from_enode
-from app.enode.webhook import subscribe_to_webhooks, fetch_enode_webhook_subscriptions
+from app.enode.webhook import subscribe_to_webhooks, fetch_enode_webhook_subscriptions, test_webhook
 from app.lib.supabase import get_supabase_admin_client
 
 logger = logging.getLogger(__name__)
@@ -93,9 +93,12 @@ class WebhookHealthScheduler:
 
         if inactive_subs:
             logger.warning(f"[WebhookScheduler] {len(inactive_subs)} inactive subscriptions detected")
-            # Log the inactive ones
+            # Log and attempt to reactivate inactive webhooks
             for sub in inactive_subs:
-                logger.warning(f"[WebhookScheduler] Inactive: {sub.get('enode_webhook_id')} - last_success: {sub.get('last_success')}")
+                webhook_id = sub.get('enode_webhook_id')
+                logger.warning(f"[WebhookScheduler] Inactive: {webhook_id} - last_success: {sub.get('last_success')}")
+                # Try to reactivate by sending a test event
+                await self._reactivate_webhook(webhook_id)
 
         # Step 4: If no active subscriptions, try to re-subscribe
         if not active_subs:
@@ -107,6 +110,19 @@ class WebhookHealthScheduler:
         await self._check_event_freshness(active_subs)
 
         logger.info("[WebhookScheduler] Health check complete")
+
+    async def _reactivate_webhook(self, webhook_id: str):
+        """Attempt to reactivate an inactive webhook by sending a test event."""
+        if not webhook_id:
+            return
+        try:
+            logger.info(f"[WebhookScheduler] Attempting to reactivate webhook {webhook_id} via test endpoint...")
+            result = await test_webhook(webhook_id)
+            logger.info(f"[WebhookScheduler] Webhook {webhook_id} test sent successfully: {result}")
+            # Sync to get updated status
+            await sync_webhook_subscriptions_from_enode()
+        except Exception as e:
+            logger.error(f"[WebhookScheduler] Failed to reactivate webhook {webhook_id}: {e}")
 
     async def _ensure_webhook_subscription(self):
         """Ensure at least one webhook subscription exists and is active."""

@@ -1,11 +1,35 @@
 'use client';
 
 import { useUserContext } from '@/contexts/UserContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 // Removed useRouter import
 import { authFetch } from '@/lib/authFetch';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { Activity, Zap, Database, Radio, RefreshCw } from 'lucide-react';
+
+interface MetricsData {
+  current: {
+    window_start: string;
+    window_seconds: number;
+    api_requests: number;
+    api_errors: number;
+    api_requests_per_min: number;
+    db_queries: number;
+    db_errors: number;
+    db_queries_per_min: number;
+    ha_pushes: number;
+    ha_push_errors: number;
+    webhook_received: number;
+    webhook_per_min: number;
+    avg_response_time_ms: number;
+    top_endpoints: Array<{ endpoint: string; count: number }>;
+  };
+  previous?: {
+    api_requests: number;
+    webhook_received: number;
+  };
+}
 
 interface InsightsData {
   total_users?: number;
@@ -22,6 +46,24 @@ interface InsightsData {
   basic_subscriptions?: number;
   pro_subscriptions?: number;
   users_on_trial?: number;
+  vehicles_by_country?: Array<{
+    country_code: string;
+    country: string;
+    count: number;
+  }>;
+}
+
+/**
+ * Convert a 2-letter country code to a flag emoji.
+ */
+function countryCodeToFlag(countryCode: string): string {
+  const code = countryCode.toUpperCase();
+  if (code.length !== 2) return '';
+  const offset = 127397;
+  return String.fromCodePoint(
+    code.charCodeAt(0) + offset,
+    code.charCodeAt(1) + offset
+  );
 }
 
 /**
@@ -34,6 +76,36 @@ export default function AdminDashboardPage() {
   const [insights, setInsights] = useState<InsightsData>({});
   const [dataLoading, setDataLoading] = useState(true);
   const [hasFetched, setHasFetched] = useState(false); // New state to prevent re-fetching
+  const [metrics, setMetrics] = useState<MetricsData | null>(null);
+  const [metricsRefreshing, setMetricsRefreshing] = useState(false);
+
+  // Fetch metrics with auto-refresh
+  const fetchMetrics = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const { data, error } = await authFetch('/admin/metrics', { method: 'GET', accessToken });
+      if (!error && data) {
+        setMetrics(data as MetricsData);
+      }
+    } catch (e) {
+      console.error('Error fetching metrics:', e);
+    }
+  }, [accessToken]);
+
+  // Auto-refresh metrics every 30 seconds
+  useEffect(() => {
+    if (accessToken && mergedUser?.role === 'admin') {
+      fetchMetrics();
+      const interval = setInterval(fetchMetrics, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [accessToken, mergedUser, fetchMetrics]);
+
+  const handleRefreshMetrics = async () => {
+    setMetricsRefreshing(true);
+    await fetchMetrics();
+    setMetricsRefreshing(false);
+  };
 
   useEffect(() => {
     const fetchInsights = async () => {
@@ -44,42 +116,16 @@ export default function AdminDashboardPage() {
 
       setDataLoading(true);
       try {
-        const endpoints = [
-          '/insights/users/total',
-          '/insights/users/new/1day',
-          '/insights/users/new/7days',
-          '/insights/users/new/30days',
-          '/insights/vehicles/total',
-          '/insights/vehicles/new/1day',
-          '/insights/vehicles/new/7days',
-          '/insights/vehicles/new/30days',
-          '/insights/revenue/total',
-          `/insights/revenue/monthly?year=${new Date().getFullYear()}&month=${new Date().getMonth() + 1}`,
-          `/insights/revenue/yearly?year=${new Date().getFullYear()}`,
-          '/insights/subscriptions/basic',
-          '/insights/subscriptions/pro',
-          '/insights/users/on_trial',
-        ];
+        // Use consolidated endpoint for better performance (single request instead of 15)
+        const { data, error } = await authFetch('/insights/all', { method: 'GET', accessToken });
 
-        const results = await Promise.all(
-          endpoints.map(async (endpoint) => {
-            const { data, error } = await authFetch(endpoint, { method: 'GET', accessToken });
-            if (error) {
-              toast.error(`Failed to fetch ${endpoint}: ${error.message}`);
-              return null;
-            }
-            return data;
-          })
-        );
+        if (error) {
+          toast.error(`Failed to fetch insights: ${error.message}`);
+          setHasFetched(true);
+          return;
+        }
 
-        const combinedInsights: InsightsData = results.reduce((acc, current) => {
-          if (current) {
-            return { ...acc, ...current };
-          } 
-          return acc;
-        }, {});
-
-        setInsights(combinedInsights);
+        setInsights(data as InsightsData);
         setHasFetched(true); // Set to true after successful fetch
       } catch (error) {
         console.error('Error fetching insights:', error);
@@ -163,6 +209,101 @@ export default function AdminDashboardPage() {
               <p className="text-xs text-muted-foreground">Pro Subscriptions</p>
               <div className="text-md font-bold mt-2">{insights.users_on_trial ?? 'N/A'}</div>
               <p className="text-xs text-muted-foreground">Users on Trial</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Vehicles by Country</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {insights.vehicles_by_country && insights.vehicles_by_country.length > 0 ? (
+                <div className="space-y-2">
+                  {insights.vehicles_by_country.map((item) => (
+                    <div key={item.country_code} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{countryCodeToFlag(item.country_code)}</span>
+                        <span className="text-sm">{item.country}</span>
+                      </div>
+                      <span className="font-bold">{item.count}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No location data available</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Real-time System Metrics */}
+          <Card className="md:col-span-2 lg:col-span-3">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Real-time System Metrics
+              </CardTitle>
+              <button
+                onClick={handleRefreshMetrics}
+                className="p-1 hover:bg-gray-100 rounded"
+                disabled={metricsRefreshing}
+              >
+                <RefreshCw className={`w-4 h-4 ${metricsRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </CardHeader>
+            <CardContent>
+              {metrics ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-blue-600 mb-1">
+                      <Zap className="w-4 h-4" />
+                      <span className="text-xs font-medium">API Requests</span>
+                    </div>
+                    <div className="text-2xl font-bold">{metrics.current.api_requests}</div>
+                    <div className="text-xs text-gray-500">
+                      {metrics.current.api_requests_per_min}/min
+                      {metrics.current.api_errors > 0 && (
+                        <span className="text-red-500 ml-2">({metrics.current.api_errors} errors)</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-green-600 mb-1">
+                      <Radio className="w-4 h-4" />
+                      <span className="text-xs font-medium">Webhooks In</span>
+                    </div>
+                    <div className="text-2xl font-bold">{metrics.current.webhook_received}</div>
+                    <div className="text-xs text-gray-500">{metrics.current.webhook_per_min}/min</div>
+                  </div>
+
+                  <div className="bg-purple-50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-purple-600 mb-1">
+                      <Radio className="w-4 h-4" />
+                      <span className="text-xs font-medium">HA Pushes</span>
+                    </div>
+                    <div className="text-2xl font-bold">{metrics.current.ha_pushes}</div>
+                    <div className="text-xs text-gray-500">
+                      {metrics.current.ha_push_errors > 0 ? (
+                        <span className="text-red-500">{metrics.current.ha_push_errors} failed</span>
+                      ) : (
+                        <span className="text-green-600">All success</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-orange-50 p-3 rounded-lg">
+                    <div className="flex items-center gap-2 text-orange-600 mb-1">
+                      <Database className="w-4 h-4" />
+                      <span className="text-xs font-medium">Avg Response</span>
+                    </div>
+                    <div className="text-2xl font-bold">{metrics.current.avg_response_time_ms}ms</div>
+                    <div className="text-xs text-gray-500">
+                      Window: {Math.round(metrics.current.window_seconds / 60)}min
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Loading metrics...</p>
+              )}
             </CardContent>
           </Card>
         </div>

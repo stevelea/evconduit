@@ -1,6 +1,7 @@
 'use client';
 
 import GlobalStats from "@/components/insights/GlobalStats";
+import CountryDistribution from "@/components/insights/CountryDistribution";
 import { useUserContext } from "@/contexts/UserContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export default function InsightsPage() {
       {/* Hardcoded string */}
       <h2 className="text-2xl font-semibold">EVConduit Insights</h2>
       <GlobalStats />
+      <CountryDistribution />
 
       {isProUser ? (
         <PersonalStatsCard />

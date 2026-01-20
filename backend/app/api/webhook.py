@@ -1,7 +1,10 @@
+import asyncio
 import stripe
 from stripe import StripeObject
 
+import copy
 import json
+import time
 from fastapi import APIRouter, Request, Header, HTTPException
 import logging
 
@@ -11,17 +14,216 @@ import httpx
 from app.api.payments import process_successful_payment_intent
 from app.config import ENODE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET
 from app.lib.webhook_logic import process_event
-from app.storage.user import add_user_sms_credits, add_purchased_api_tokens, get_ha_webhook_settings, get_user_by_id, get_user_id_by_stripe_customer_id, remove_stripe_customer_id, update_user_subscription, update_user
+from app.storage.user import add_user_sms_credits, add_purchased_api_tokens, get_ha_webhook_settings, get_user_by_id, get_user_id_by_stripe_customer_id, remove_stripe_customer_id, update_user_subscription, update_user, update_ha_push_stats
+from app.services.pushover_service import get_pushover_service
 from app.storage.subscription import get_price_id_map, update_subscription_status, upsert_subscription_from_stripe
 from app.enode.verify import verify_signature
 from app.storage.webhook import save_webhook_event
 from app.services.stripe_utils import log_stripe_webhook
 from app.storage.invoice import find_subscription_id, upsert_invoice_from_stripe
+from app.services.metrics import track_ha_push, track_webhook_received
 
 # Create a module-specific logger
 logger = logging.getLogger(__name__)
 
+
+async def _safe_background_task(coro, task_name: str):
+    """Wrapper to log exceptions from fire-and-forget background tasks."""
+    try:
+        await coro
+    except Exception as e:
+        logger.error("[❌ Background %s] %s", task_name, e)
+
+
+# Webhook deduplication cache: {(vehicle_id, event_type): last_processed_time}
+# Prevents processing the same vehicle update multiple times within DEDUP_WINDOW_SECONDS
+_webhook_dedup_cache: dict[tuple[str, str], float] = {}
+DEDUP_WINDOW_SECONDS = 2.0  # Skip duplicate events within 2 seconds
+
+
+def _should_process_event(event: dict) -> bool:
+    """Check if we should process this event or skip as duplicate."""
+    global _webhook_dedup_cache
+
+    event_type = event.get("event", "")
+    vehicle = event.get("vehicle", {})
+    vehicle_id = vehicle.get("id") if vehicle else None
+
+    # Only deduplicate vehicle update events
+    if not vehicle_id or event_type != "user:vehicle:updated":
+        return True
+
+    cache_key = (vehicle_id, event_type)
+    now = time.time()
+
+    # Clean old entries (older than 60 seconds)
+    expired_keys = [k for k, v in _webhook_dedup_cache.items() if now - v > 60]
+    for k in expired_keys:
+        del _webhook_dedup_cache[k]
+
+    last_time = _webhook_dedup_cache.get(cache_key)
+    if last_time and (now - last_time) < DEDUP_WINDOW_SECONDS:
+        logger.debug("[⏭️ Dedup] Skipping duplicate event for vehicle %s", vehicle_id)
+        return False
+
+    _webhook_dedup_cache[cache_key] = now
+    return True
+
+
+def _dedupe_batch_by_latest(events: list[dict]) -> list[dict]:
+    """
+    Pre-process a batch of webhook events to keep only the most recent event per vehicle.
+    This ensures we always process the freshest data when Enode sends batches with multiple
+    events for the same vehicle (ordered by createdAt, not lastSeen).
+
+    Non-vehicle events (like heartbeats) are always included.
+    """
+    # Group vehicle events by vehicle_id, keeping track of the most recent by lastSeen
+    latest_by_vehicle: dict[str, dict] = {}
+    non_vehicle_events: list[dict] = []
+
+    for event in events:
+        event_type = event.get("event", "")
+        vehicle = event.get("vehicle")
+
+        # Non-vehicle events pass through
+        if not vehicle or event_type not in ["user:vehicle:updated", "user:vehicle:discovered"]:
+            non_vehicle_events.append(event)
+            continue
+
+        vehicle_id = vehicle.get("id")
+        if not vehicle_id:
+            non_vehicle_events.append(event)
+            continue
+
+        last_seen = vehicle.get("lastSeen", "")
+
+        # Keep the event with the most recent lastSeen for each vehicle
+        if vehicle_id not in latest_by_vehicle:
+            latest_by_vehicle[vehicle_id] = event
+        else:
+            existing_last_seen = latest_by_vehicle[vehicle_id].get("vehicle", {}).get("lastSeen", "")
+            if last_seen > existing_last_seen:
+                latest_by_vehicle[vehicle_id] = event
+
+    # Combine non-vehicle events with the deduplicated vehicle events
+    result = non_vehicle_events + list(latest_by_vehicle.values())
+
+    if len(events) != len(result):
+        logger.info("[🔄 Batch dedup] Reduced %d events to %d (kept latest per vehicle)", len(events), len(result))
+
+    return result
+
 router = APIRouter()
+
+# Cache for tracking vehicle state changes (for Pushover notifications)
+# Format: {vehicle_id: {"isCharging": bool, "isReachable": bool, "isFullyCharged": bool}}
+_vehicle_state_cache: dict[str, dict] = {}
+
+
+async def send_pushover_notification(event: dict, user_id: str | None):
+    """Sends Pushover notification based on vehicle state changes and user preferences."""
+    if not user_id:
+        return
+
+    try:
+        # Get user and check if Pushover is enabled
+        user = await get_user_by_id(user_id)
+        if not user:
+            return
+
+        pushover_enabled = getattr(user, "pushover_enabled", False)
+        pushover_user_key = getattr(user, "pushover_user_key", None)
+        pushover_events = getattr(user, "pushover_events", {}) or {}
+
+        if not pushover_enabled or not pushover_user_key:
+            return
+
+        vehicle = event.get("vehicle", {})
+        vehicle_id = vehicle.get("id")
+        if not vehicle_id:
+            return
+
+        charge_state = vehicle.get("chargeState", {})
+        is_charging = charge_state.get("isCharging")
+        is_fully_charged = charge_state.get("isFullyCharged")
+        is_reachable = vehicle.get("isReachable")
+        battery_level = charge_state.get("batteryLevel")
+        vehicle_info = vehicle.get("information", {})
+        vehicle_name = vehicle_info.get("displayName") or f"{vehicle_info.get('brand', '')} {vehicle_info.get('model', '')}".strip() or "Your vehicle"
+
+        # Get previous state
+        prev_state = _vehicle_state_cache.get(vehicle_id, {})
+        prev_charging = prev_state.get("isCharging")
+        prev_reachable = prev_state.get("isReachable")
+        prev_fully_charged = prev_state.get("isFullyCharged")
+
+        # Update cache with current state
+        _vehicle_state_cache[vehicle_id] = {
+            "isCharging": is_charging,
+            "isReachable": is_reachable,
+            "isFullyCharged": is_fully_charged,
+        }
+
+        pushover = get_pushover_service()
+        notification_sent = False
+
+        # Check for charge_complete event (was charging, now fully charged or stopped charging)
+        if pushover_events.get("charge_complete", True):
+            if (prev_charging is True and is_charging is False) or \
+               (prev_fully_charged is not True and is_fully_charged is True):
+                battery_str = f" ({battery_level}%)" if battery_level is not None else ""
+                await pushover.send_notification(
+                    user_key=pushover_user_key,
+                    title="Charging Complete",
+                    message=f"{vehicle_name} has finished charging{battery_str}.",
+                    sound="magic"
+                )
+                logger.info(f"[📱 Pushover] Sent charge_complete notification to user {user_id}")
+                notification_sent = True
+
+        # Check for charge_started event
+        if not notification_sent and pushover_events.get("charge_started", False):
+            if prev_charging is False and is_charging is True:
+                battery_str = f" (currently at {battery_level}%)" if battery_level is not None else ""
+                await pushover.send_notification(
+                    user_key=pushover_user_key,
+                    title="Charging Started",
+                    message=f"{vehicle_name} has started charging{battery_str}.",
+                    sound="bike"
+                )
+                logger.info(f"[📱 Pushover] Sent charge_started notification to user {user_id}")
+                notification_sent = True
+
+        # Check for vehicle_offline event
+        if not notification_sent and pushover_events.get("vehicle_offline", False):
+            if prev_reachable is True and is_reachable is False:
+                await pushover.send_notification(
+                    user_key=pushover_user_key,
+                    title="Vehicle Offline",
+                    message=f"{vehicle_name} is no longer reachable.",
+                    sound="falling",
+                    priority=-1  # Low priority for offline
+                )
+                logger.info(f"[📱 Pushover] Sent vehicle_offline notification to user {user_id}")
+                notification_sent = True
+
+        # Check for vehicle_online event
+        if not notification_sent and pushover_events.get("vehicle_online", False):
+            if prev_reachable is False and is_reachable is True:
+                battery_str = f" (battery at {battery_level}%)" if battery_level is not None else ""
+                await pushover.send_notification(
+                    user_key=pushover_user_key,
+                    title="Vehicle Online",
+                    message=f"{vehicle_name} is now reachable{battery_str}.",
+                    sound="pushover",
+                    priority=-1  # Low priority for online
+                )
+                logger.info(f"[📱 Pushover] Sent vehicle_online notification to user {user_id}")
+
+    except Exception as e:
+        logger.error(f"[❌ Pushover] Error sending notification for user {user_id}: {e}")
+
 
 async def push_to_homeassistant(event: dict, user_id: str | None):
     """Pushes a single event to Home Assistant via webhook settings in the DB."""
@@ -34,8 +236,39 @@ async def push_to_homeassistant(event: dict, user_id: str | None):
         logger.info("HA Webhook ID/URL not configured for user_id=%s (skipping HA push)", user_id)
         return
 
+    # Create a copy of the event to avoid modifying the original
+    ha_event = copy.deepcopy(event)
+
+    vehicle = ha_event.get("vehicle", {})
+    enode_vehicle_id = vehicle.get("id")
+
+    # Look up the internal DB vehicle ID from the Enode vehicle ID
+    # This is needed because users configure the internal ID in HA, not the Enode ID
+    if enode_vehicle_id:
+        from app.storage.vehicle import get_vehicle_by_vehicle_id
+        db_vehicle = await get_vehicle_by_vehicle_id(enode_vehicle_id)
+        if db_vehicle:
+            internal_id = db_vehicle.get("id")
+            # Add the internal ID that HA expects (matches what users configure)
+            ha_event["vehicleId"] = internal_id
+            vehicle["id"] = internal_id  # Replace Enode ID with internal ID
+            logger.info("HA push: Mapped Enode ID %s to internal ID %s", enode_vehicle_id, internal_id)
+        else:
+            logger.warning("HA push: Could not find DB vehicle for Enode ID %s", enode_vehicle_id)
+
+    # Ensure displayName is set (fallback to brand + model if Enode doesn't provide one)
+    info = vehicle.get("information", {})
+    if not info.get("displayName"):
+        brand = info.get("brand", "")
+        model = info.get("model", "")
+        fallback_name = f"{brand} {model}".strip()
+        if fallback_name:
+            if "information" not in vehicle:
+                vehicle["information"] = {}
+            vehicle["information"]["displayName"] = fallback_name
+            logger.info("HA push: Added fallback displayName '%s' for user %s", fallback_name, user_id)
+
     # Log chargeState data being pushed to HA for debugging
-    vehicle = event.get("vehicle", {})
     charge_state = vehicle.get("chargeState", {})
     logger.info(
         "HA push chargeState for user %s: chargeRate=%s, batteryLevel=%s, isCharging=%s",
@@ -46,14 +279,18 @@ async def push_to_homeassistant(event: dict, user_id: str | None):
     )
 
     url = f"{settings['ha_external_url'].rstrip('/')}/api/webhook/{settings['ha_webhook_id']}"
-    logger.debug("Pushing to HA webhook %s → %s", url, event)
+    logger.debug("Pushing to HA webhook %s → %s", url, ha_event)
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=event, timeout=10.0)
+            resp = await client.post(url, json=ha_event, timeout=10.0)
             resp.raise_for_status()
             logger.info("Successfully pushed event to HA: HTTP %s", resp.status_code)
+            track_ha_push(success=True)
+            update_ha_push_stats(user_id, success=True)
     except Exception as e:
         logger.error("Failed to push to HA webhook: %s", e)
+        track_ha_push(success=False)
+        update_ha_push_stats(user_id, success=False)
 
 
 @router.post("/webhook/enode")
@@ -74,22 +311,46 @@ async def handle_webhook(
         incoming  = json.loads(raw_body)
         logger.info("[📥 Verified webhook payload] %s", incoming)
 
+        # Track webhook received
+        track_webhook_received()
+
         # Save and process
         save_webhook_event(incoming)
 
         handled = 0
 
         if isinstance(incoming, list):
-            for idx, event in enumerate(incoming):
-                logger.info("[📥 #%d/%d] Processing webhook event: %s", idx+1, len(incoming), event.get("event"))
-                handled += await process_event(event)
+            # Pre-process batch to keep only the most recent event per vehicle
+            # This ensures we process the freshest data when Enode sends events out of order
+            deduped_events = _dedupe_batch_by_latest(incoming)
+
+            for idx, event in enumerate(deduped_events):
+                if not _should_process_event(event):
+                    continue  # Skip duplicate (cross-batch dedup)
+                logger.info("[📥 #%d/%d] Processing webhook event: %s", idx+1, len(deduped_events), event.get("event"))
+                count, was_saved = await process_event(event)
+                handled += count
                 user_id = event.get('user', {}).get('id')
-                await push_to_homeassistant(event, user_id)
+                # Only push to HA if fresh data was saved (not stale)
+                # Fire-and-forget to respond to Enode within 5s timeout
+                if was_saved:
+                    asyncio.create_task(_safe_background_task(push_to_homeassistant(event, user_id), "HA push"))
+                    asyncio.create_task(_safe_background_task(send_pushover_notification(event, user_id), "Pushover"))
+                else:
+                    logger.info("[⏭️ Skip HA push] Stale data not pushed for user %s", user_id)
         else:
-            logger.info("[📥 Single] Processing webhook event: %s", incoming.get("event"))
-            handled += await process_event(incoming)
-            user_id = incoming.get('user', {}).get('id')
-            await push_to_homeassistant(incoming, user_id)
+            if _should_process_event(incoming):
+                logger.info("[📥 Single] Processing webhook event: %s", incoming.get("event"))
+                count, was_saved = await process_event(incoming)
+                handled += count
+                user_id = incoming.get('user', {}).get('id')
+                # Only push to HA if fresh data was saved (not stale)
+                # Fire-and-forget to respond to Enode within 5s timeout
+                if was_saved:
+                    asyncio.create_task(_safe_background_task(push_to_homeassistant(incoming, user_id), "HA push"))
+                    asyncio.create_task(_safe_background_task(send_pushover_notification(incoming, user_id), "Pushover"))
+                else:
+                    logger.info("[⏭️ Skip HA push] Stale data not pushed for user %s", user_id)
 
         logger.info("Handled total %d events", handled)
         return {"status": "ok", "handled": handled}

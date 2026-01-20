@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Loader2, Trash } from 'lucide-react';
+import { Loader2, Trash, ChevronUp, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
@@ -30,13 +30,95 @@ type AdminUserView = {
   api_calls_30d: number;
   vehicles: UserVehicle[];
   vehicle_count: number;
+  country_code?: string | null;
 };
+
+// Convert country code to flag emoji
+function countryCodeToFlag(countryCode: string | null | undefined): string {
+  if (!countryCode || countryCode.length !== 2) return '';
+  const codePoints = countryCode
+    .toUpperCase()
+    .split('')
+    .map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
+
+type SortKey = 'full_name' | 'email' | 'tier' | 'api_calls_30d' | 'vehicle_count' | 'linked_at' | 'is_approved';
+type SortDirection = 'asc' | 'desc';
 
 export default function UserAdminPage() {
   const { user, accessToken } = useAuth();
   const [users, setUsers] = useState<AdminUserView[]>([]);
   const [loading, setLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('linked_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      let aVal: string | number | boolean | null = null;
+      let bVal: string | number | boolean | null = null;
+
+      switch (sortKey) {
+        case 'full_name':
+          aVal = a.full_name?.toLowerCase() || '';
+          bVal = b.full_name?.toLowerCase() || '';
+          break;
+        case 'email':
+          aVal = a.email.toLowerCase();
+          bVal = b.email.toLowerCase();
+          break;
+        case 'tier':
+          aVal = a.tier;
+          bVal = b.tier;
+          break;
+        case 'api_calls_30d':
+          aVal = a.api_calls_30d;
+          bVal = b.api_calls_30d;
+          break;
+        case 'vehicle_count':
+          aVal = a.vehicle_count;
+          bVal = b.vehicle_count;
+          break;
+        case 'linked_at':
+          aVal = a.linked_at || '';
+          bVal = b.linked_at || '';
+          break;
+        case 'is_approved':
+          aVal = a.is_approved ? 1 : 0;
+          bVal = b.is_approved ? 1 : 0;
+          break;
+      }
+
+      if (aVal === null || bVal === null) return 0;
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [users, sortKey, sortDirection]);
+
+  const SortHeader = ({ label, sortKeyName }: { label: string; sortKeyName: SortKey }) => (
+    <th
+      className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100 select-none"
+      onClick={() => handleSort(sortKeyName)}
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        {sortKey === sortKeyName && (
+          sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+        )}
+      </div>
+    </th>
+  );
 
   const fetchUsers = useCallback(async () => {
     if (!accessToken) return;
@@ -114,15 +196,15 @@ export default function UserAdminPage() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tier</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">API Calls (30d)</th>
+              <SortHeader label="Name" sortKeyName="full_name" />
+              <SortHeader label="Email" sortKeyName="email" />
+              <SortHeader label="Tier" sortKeyName="tier" />
+              <SortHeader label="API Calls (30d)" sortKeyName="api_calls_30d" />
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Admin</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Enode Connected</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Vehicles</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Connected At</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Approved</th>
+              <SortHeader label="Vehicles" sortKeyName="vehicle_count" />
+              <SortHeader label="Connected At" sortKeyName="linked_at" />
+              <SortHeader label="Approved" sortKeyName="is_approved" />
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
@@ -140,7 +222,7 @@ export default function UserAdminPage() {
               ))
             ) : (
               <>
-                {users.map(u => (
+                {sortedUsers.map(u => (
                   <tr key={u.id} className="hover:bg-gray-50">
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                       <Tooltip>
@@ -152,7 +234,7 @@ export default function UserAdminPage() {
                         </TooltipContent>
                       </Tooltip>
                     </td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.full_name ?? '–'}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{countryCodeToFlag(u.country_code)} {u.full_name ?? '–'}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.email}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 capitalize">{u.tier}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.api_calls_30d.toLocaleString()}</td>
@@ -195,7 +277,7 @@ export default function UserAdminPage() {
                     </td>
                   </tr>
                 ))}
-                {!loading && users.length === 0 && (
+                {!loading && sortedUsers.length === 0 && (
                   <tr>
                     <td colSpan={11} className="px-4 py-4 text-center text-sm text-gray-500">No users found.</td>
                   </tr>
@@ -228,13 +310,13 @@ export default function UserAdminPage() {
           ))
         ) : (
           <>
-            {users.map(u => (
+            {sortedUsers.map(u => (
               <Card key={u.id} className="p-4">
                 <div className="flex justify-between items-center mb-2">
                   <div className="font-semibold text-gray-900">
                     <Tooltip>
                       <TooltipTrigger>
-                        {u.full_name ?? u.email}
+                        {countryCodeToFlag(u.country_code)} {u.full_name ?? u.email}
                       </TooltipTrigger>
                       <TooltipContent>
                         <pre className="text-xs text-gray-700">{u.id}</pre>
@@ -278,7 +360,7 @@ export default function UserAdminPage() {
                 </div>
               </Card>
             ))}
-            {!loading && users.length === 0 && (
+            {!loading && sortedUsers.length === 0 && (
               <div className="text-center text-gray-500 text-sm">No users found.</div>
             )}
           </>

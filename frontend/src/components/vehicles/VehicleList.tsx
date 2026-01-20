@@ -3,6 +3,31 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Vehicle } from "@/types/vehicle";
 import clsx from "clsx";
 
+// Format lastSeen time in user's local timezone
+function formatLastSeen(lastSeen: string | null): string {
+  if (!lastSeen) return "Unknown";
+  const date = new Date(lastSeen);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  // Show relative time for recent, absolute for older
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  // For older dates, show date and time in local timezone
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 type Props = {
   vehicles: Vehicle[];
   loading: boolean;
@@ -133,7 +158,10 @@ function VehicleList({
                     <td className="px-6 py-4">
                       <div className="font-semibold text-gray-900">{displayName}</div>
                       <div className="text-xs text-gray-400">
-                        Vehicle id: {vehicle.db_id}
+                        Vehicle ID: {vehicle.db_id}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        Last seen: {formatLastSeen(vehicle.lastSeen)}
                       </div>
                     </td>
                     <td className="px-6 py-4">{battery}</td>
@@ -208,7 +236,8 @@ function VehicleList({
               className="rounded-xl border bg-white p-4 flex flex-col gap-2 shadow-sm"
             >
               <div className="font-semibold text-lg text-gray-900">{displayName}</div>
-              <div className="text-xs text-gray-400 mb-1">Vehicle id: {vehicle.db_id}</div>
+              <div className="text-xs text-gray-400">Vehicle ID: {vehicle.db_id}</div>
+              <div className="text-xs text-gray-400 mb-1">Last seen: {formatLastSeen(vehicle.lastSeen)}</div>
               <div className="text-sm text-gray-600 mb-1">
                 Battery: <span className="font-medium">{battery}</span>
                 {" · "}

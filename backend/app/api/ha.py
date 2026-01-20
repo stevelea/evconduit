@@ -11,7 +11,7 @@ from postgrest.exceptions import APIError
 
 from app.auth.api_key_auth import get_api_key_user
 from app.models.user import User
-from app.storage.vehicle import get_all_cached_vehicles, get_vehicle_by_vehicle_id as get_vehicle_by_id
+from app.storage.vehicle import get_all_cached_vehicles, get_vehicle_by_id, get_vehicle_by_vehicle_id
 from app.enode.vehicle import set_vehicle_charging
 from app.api.dependencies import api_key_rate_limit, require_basic_or_pro_tier
 from app.dependencies.auth import get_current_user
@@ -116,7 +116,10 @@ async def get_vehicle_status_legacy(vehicle_id: str, user: User = Depends(get_ap
     )
 
     try:
+        # Try internal DB ID first, then Enode ID for backwards compatibility
         vehicle = await get_vehicle_by_id(vehicle_id)
+        if not vehicle:
+            vehicle = await get_vehicle_by_vehicle_id(vehicle_id)
     except APIError as e:
         _handle_api_error(e, vehicle_id, "get_vehicle_status_legacy")
     except Exception as e:
@@ -522,3 +525,29 @@ async def get_ha_webhook_status(user: User = Depends(get_api_key_user)):
             "external_url": settings.get("ha_external_url"),
         }
     return {"registered": False}
+
+
+@router.post("/ha/refresh",
+             summary="Force refresh vehicle data from Enode",
+             )
+async def refresh_vehicle_data(user: User = Depends(get_api_key_user)):
+    """
+    Force a refresh of vehicle data by polling Enode directly.
+    This bypasses webhook delivery and fetches fresh data immediately.
+    Updated vehicles are pushed to Home Assistant if webhook is configured.
+    """
+    from app.services.vehicle_polling import poll_and_push_to_ha
+
+    logger.info("[refresh_vehicle_data] Manual refresh requested for user_id=%s", user.id)
+
+    try:
+        updated_count = await poll_and_push_to_ha(user.id)
+        logger.info("[refresh_vehicle_data] Refreshed %d vehicles for user %s", updated_count, user.id)
+        return {
+            "status": "success",
+            "vehicles_updated": updated_count,
+            "message": f"Refreshed {updated_count} vehicle(s) from Enode"
+        }
+    except Exception as e:
+        logger.error("[refresh_vehicle_data] Error refreshing vehicles: %s", e, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Error refreshing vehicle data: {str(e)}")

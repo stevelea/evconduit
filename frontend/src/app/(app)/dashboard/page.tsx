@@ -2,9 +2,11 @@
 
 import { useRef, useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
+import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/authFetch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 
 import LinkVehicleDialog from "@/components/dashboard/LinkVehicleDialog";
 import VehicleList from "@/components/vehicles/VehicleList";
@@ -20,6 +22,7 @@ export default function DashboardPage() {
   const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const justClosedRef = useRef(false);
 
   // Hämta fordon från backend
@@ -60,6 +63,30 @@ export default function DashboardPage() {
     }
   }, [accessToken, fetchVehicles]);
 
+  // Refresh vehicles from Enode (bypasses webhook, polls directly)
+  const handleRefresh = useCallback(async () => {
+    if (!accessToken || refreshing) return;
+    setRefreshing(true);
+
+    const { data, error } = await authFetch("/me/vehicles/refresh", {
+      method: "POST",
+      accessToken,
+    });
+
+    if (error) {
+      toast.error("Failed to refresh vehicle data");
+    } else {
+      const count = data?.vehicles_updated ?? 0;
+      if (count > 0) {
+        toast.success(`Refreshed ${count} vehicle(s) from manufacturer`);
+        fetchVehicles(); // Reload the vehicle list with new data
+      } else {
+        toast.info("Vehicle data is already up to date");
+      }
+    }
+    setRefreshing(false);
+  }, [accessToken, refreshing, fetchVehicles]);
+
   // Unlink triggers fetch
   const openUnlinkDialog = useCallback((vendor: string) => {
     setSelectedVendor(vendor);
@@ -85,26 +112,17 @@ export default function DashboardPage() {
   const handleConfirmUnlink = useCallback(async () => {
     if (!accessToken || !selectedVendor) return;
 
-    try {
-      const response = await fetch("/api/user/unlink", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ vendor: selectedVendor }),
-      });
+    const { error } = await authFetch("/user/unlink", {
+      method: "POST",
+      accessToken,
+      body: JSON.stringify({ vendor: selectedVendor }),
+    });
 
-      const result = await response.json();
-
-      if (result.error) {
-        toast.error("Failed to unlink vendor"); /* Hardcoded string */
-      } else {
-        toast.success(`Vendor ${selectedVendor} unlinked`); /* Hardcoded string */
-        fetchVehicles(); // Uppdatera fordon efter unlink
-      }
-    } catch {
+    if (error) {
       toast.error("Failed to unlink vendor"); /* Hardcoded string */
+    } else {
+      toast.success(`Vendor ${selectedVendor} unlinked`); /* Hardcoded string */
+      fetchVehicles(); // Uppdatera fordon efter unlink
     }
     setUnlinkDialogOpen(false);
   }, [accessToken, selectedVendor, fetchVehicles]);
@@ -139,8 +157,17 @@ export default function DashboardPage() {
           Welcome, {user.user_metadata?.name ?? "User"}
         </h1>
 
-        <div>
+        <div className="flex flex-wrap gap-3">
           <LinkVehicleDialog accessToken={accessToken} />
+          <Button
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={refreshing || vehiclesLoading}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing..." : "Refresh from Enode"}
+          </Button>
         </div>
 
         <VehicleList
