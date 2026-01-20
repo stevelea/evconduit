@@ -477,7 +477,7 @@ def get_ha_webhook_stats(user_id: str) -> dict | None:
     """Retrieves Home Assistant webhook stats for a user including push counts and reachability."""
     try:
         result = supabase.table("users") \
-            .select("ha_webhook_id, ha_external_url, ha_push_success_count, ha_push_fail_count, ha_last_push_at, ha_last_check_at, ha_url_reachable") \
+            .select("ha_webhook_id, ha_external_url, ha_push_success_count, ha_push_fail_count, ha_last_push_at, ha_last_check_at, ha_url_reachable, ha_last_error") \
             .eq("id", user_id) \
             .maybe_single() \
             .execute()
@@ -491,6 +491,7 @@ def get_ha_webhook_stats(user_id: str) -> dict | None:
                 "last_push_at": result.data.get("ha_last_push_at"),
                 "last_check_at": result.data.get("ha_last_check_at"),
                 "url_reachable": result.data.get("ha_url_reachable"),
+                "last_error": result.data.get("ha_last_error"),
             }
         return None
     except Exception as e:
@@ -756,10 +757,11 @@ async def create_user(user_id: str, email: str, name: str = None) -> User | None
         return None
 
 
-def update_ha_push_stats(user_id: str, success: bool) -> None:
+def update_ha_push_stats(user_id: str, success: bool, error: str | None = None) -> None:
     """
     Update HA webhook push statistics for a user.
     Increments success or fail count and updates last push timestamp.
+    Optionally stores an error message (e.g., "vehicle_id_mismatch").
     """
     try:
         # First get current counts
@@ -782,15 +784,18 @@ def update_ha_push_stats(user_id: str, success: bool) -> None:
         }
         if success:
             update_data["ha_push_success_count"] = current_success + 1
+            update_data["ha_last_error"] = None  # Clear error on success
         else:
             update_data["ha_push_fail_count"] = current_fail + 1
+            if error:
+                update_data["ha_last_error"] = error
 
         supabase.table("users") \
             .update(update_data) \
             .eq("id", user_id) \
             .execute()
 
-        logger.debug(f"[📊] Updated HA push stats for {user_id}: success={success}")
+        logger.debug(f"[📊] Updated HA push stats for {user_id}: success={success}, error={error}")
     except Exception as e:
         logger.error(f"[❌ update_ha_push_stats] {e}")
 

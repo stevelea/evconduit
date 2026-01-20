@@ -284,13 +284,21 @@ async def push_to_homeassistant(event: dict, user_id: str | None):
         async with httpx.AsyncClient() as client:
             resp = await client.post(url, json=ha_event, timeout=10.0)
             resp.raise_for_status()
-            logger.info("Successfully pushed event to HA: HTTP %s", resp.status_code)
-            track_ha_push(success=True)
-            update_ha_push_stats(user_id, success=True)
+            response_text = resp.text
+
+            # Check for vehicle ID mismatch error from HA
+            if "ignored - different vehicle" in response_text.lower():
+                logger.warning("HA push: Vehicle ID mismatch for user %s - HA config needs updating", user_id)
+                track_ha_push(success=False)
+                update_ha_push_stats(user_id, success=False, error="vehicle_id_mismatch")
+            else:
+                logger.info("Successfully pushed event to HA: HTTP %s", resp.status_code)
+                track_ha_push(success=True)
+                update_ha_push_stats(user_id, success=True)
     except Exception as e:
         logger.error("Failed to push to HA webhook: %s", e)
         track_ha_push(success=False)
-        update_ha_push_stats(user_id, success=False)
+        update_ha_push_stats(user_id, success=False, error=str(e))
 
 
 @router.post("/webhook/enode")

@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { authFetch } from "@/lib/authFetch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [haError, setHaError] = useState<string | null>(null);
   const justClosedRef = useRef(false);
 
   // Hämta fordon från backend
@@ -56,12 +57,27 @@ export default function DashboardPage() {
     setVehiclesLoading(false);
   }, [accessToken]);
 
+  // Check HA webhook status for errors
+  const checkHaStatus = useCallback(async () => {
+    if (!accessToken || !user) return;
+    const { data } = await authFetch(`/user/${user.id}/webhook/stats`, {
+      method: "GET",
+      accessToken,
+    });
+    if (data?.last_error) {
+      setHaError(data.last_error);
+    } else {
+      setHaError(null);
+    }
+  }, [accessToken, user]);
+
   // Hämta vid mount/user/token ändring
   useEffect(() => {
     if (accessToken) {
       fetchVehicles();
+      checkHaStatus();
     }
-  }, [accessToken, fetchVehicles]);
+  }, [accessToken, fetchVehicles, checkHaStatus]);
 
   // Refresh vehicles from Enode (bypasses webhook, polls directly)
   const handleRefresh = useCallback(async () => {
@@ -169,6 +185,24 @@ export default function DashboardPage() {
             {refreshing ? "Refreshing..." : "Refresh from Enode"}
           </Button>
         </div>
+
+        {/* HA Vehicle ID Mismatch Warning */}
+        {haError === "vehicle_id_mismatch" && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800">Home Assistant Configuration Issue</p>
+              <p className="text-amber-700 mt-1">
+                Your Home Assistant is rejecting vehicle updates because the configured vehicle ID doesn&apos;t match.
+                This can happen after relinking your vehicle.
+              </p>
+              <p className="text-amber-600 mt-2">
+                <strong>To fix:</strong> Go to Home Assistant → Settings → Devices & Services → EVConduit and update the vehicle ID.
+                You can copy the correct ID using the copy button on your vehicle card below.
+              </p>
+            </div>
+          </div>
+        )}
 
         <VehicleList
           vehicles={vehicles}

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { authFetch } from '@/lib/authFetch';
 import WebhookInput from './WebhookInput';
 import TooltipInfo from '../TooltipInfo';
-import { CheckCircle, XCircle, Loader2, Activity, Wifi, WifiOff } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Activity, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 
 interface HaWebhookSettingsCardProps {
   userId: string;
@@ -22,6 +22,7 @@ interface WebhookStats {
   last_push_at: string | null;
   last_check_at: string | null;
   url_reachable: boolean | null;
+  last_error: string | null;
 }
 
 export default function HaWebhookSettingsCard({ userId, accessToken }: HaWebhookSettingsCardProps) {
@@ -155,6 +156,23 @@ export default function HaWebhookSettingsCard({ userId, accessToken }: HaWebhook
           onChange={(e) => setWebhookId(e.target.value)}
           onSave={(value) => handleSave('webhook_id', value)}
         />
+
+        {/* Vehicle ID Mismatch Warning */}
+        {stats?.last_error === 'vehicle_id_mismatch' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800">Vehicle ID Mismatch</p>
+              <p className="text-amber-700 mt-1">
+                Home Assistant is rejecting updates because the vehicle ID doesn&apos;t match.
+                Please update the vehicle ID in your Home Assistant EVConduit configuration.
+              </p>
+              <p className="text-amber-600 mt-2 text-xs">
+                Go to Settings → Devices & Services → EVConduit in Home Assistant and reconfigure with the correct vehicle ID from your dashboard.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Stats Section */}
         {isConfigured && stats && (
