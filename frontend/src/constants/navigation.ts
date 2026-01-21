@@ -12,6 +12,7 @@ import {
   BarChart2,
   Bell,
   Megaphone,
+  Newspaper,
   Zap,
   HelpCircle,
   Sparkles,
@@ -54,6 +55,7 @@ export const navigation: NavigationGroup[] = [
     items: [
       { title: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard, adminOnly: true }, /* Hardcoded string */
       { title: 'News', href: '/admin/news', icon: Megaphone, adminOnly: true },
+      { title: 'User Updates', href: '/admin/user-updates', icon: Newspaper, adminOnly: true },
       { title: 'Settings', href: '/admin/settings', icon: Settings, adminOnly: true }, /* Hardcoded string */
       { title: 'Vendors', href: '/admin/vendors', icon: Network, adminOnly: true }, /* Hardcoded string */
       { title: 'Users', href: '/admin/users', icon: Users, adminOnly: true }, /* Hardcoded string */

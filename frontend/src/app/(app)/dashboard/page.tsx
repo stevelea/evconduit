@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
 import LinkVehicleDialog from "@/components/dashboard/LinkVehicleDialog";
+import UserUpdates from "@/components/dashboard/UserUpdates";
 import VehicleList from "@/components/vehicles/VehicleList";
 import UnlinkVendorDialog from "@/components/dashboard/UnlinkVendorDialog";
 import VehicleDetailsModal from "@/components/vehicles/VehicleDetailsModal";
@@ -185,6 +186,9 @@ export default function DashboardPage() {
             {refreshing ? "Refreshing..." : "Refresh from Enode"}
           </Button>
         </div>
+
+        {/* User Updates */}
+        <UserUpdates accessToken={accessToken} />
 
         {/* HA Vehicle ID Mismatch Warning */}
         {haError === "vehicle_id_mismatch" && (

@@ -15,6 +15,15 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.01.21',
+    date: 'January 21, 2026',
+    highlights: 'User Updates news system for dashboard announcements',
+    features: [
+      'User Updates on dashboard - see important news and announcements from EVConduit admins',
+      'Admin User Updates management - create, edit, and manage multiple update items with priority ordering',
+    ],
+  },
+  {
     version: '2026.01.20',
     date: 'January 20, 2026',
     highlights: 'Vehicle polling fallback, on-demand refresh button, webhook auto-recovery, and improved resilience',
