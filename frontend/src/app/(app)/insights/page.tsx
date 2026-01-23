@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
 import PersonalStatsCard from "@/components/insights/PersonalStatsCard";
+import ChargingSessionsList from "@/components/insights/ChargingSessionsList";
 
 export default function InsightsPage() {
   const { mergedUser, loading } = useUserContext();
@@ -33,7 +34,10 @@ export default function InsightsPage() {
       <CountryDistribution />
 
       {isProUser ? (
-        <PersonalStatsCard />
+        <>
+          <PersonalStatsCard />
+          <ChargingSessionsList />
+        </>
       ) : (
         <Card className="p-4 text-center">
           <CardHeader className="px-0 pt-0">

@@ -15,10 +15,26 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.01.22',
+    date: 'January 22, 2026',
+    highlights: 'ABRP (A Better Route Planner) integration for real-time telemetry',
+    features: [
+      'ABRP integration - automatically send vehicle telemetry (SOC, location, charging status) to A Better Route Planner',
+      'ABRP settings card on Profile page - configure your ABRP token and enable/disable updates',
+      'Test button to verify ABRP connectivity',
+      'ABRP push statistics - track successful and failed telemetry pushes',
+    ],
+  },
+  {
     version: '2026.01.21',
     date: 'January 21, 2026',
-    highlights: 'User Updates news system for dashboard announcements',
+    highlights: 'Charging sessions history with detailed analytics, cost tracking, and CSV export',
     features: [
+      'Charging Sessions list on Insights page (Pro users) - view your complete charging history',
+      'Session detail page with battery level and charge rate charts',
+      'Cost tracking per session - enter cost per kWh or total cost (auto-calculates the other)',
+      'Odometer entry per charging session for tracking',
+      'CSV export of all charging sessions',
       'User Updates on dashboard - see important news and announcements from EVConduit admins',
       'Admin User Updates management - create, edit, and manage multiple update items with priority ordering',
     ],

@@ -13,6 +13,7 @@ import { authFetch } from '@/lib/authFetch';
 import { toast } from 'sonner';
 import ApiKeySection from '@/components/profile/ApiKeySection';
 import HaWebhookSettingsCard from '@/components/profile/HaWebhookSettingsCard';
+import AbrpSettingsCard from '@/components/profile/AbrpSettingsCard';
 import BillingCard from '@/components/profile/BillingCard';
 import SubscribeCard from '@/components/profile/SubscribeCard';
 import TrialCard from '@/components/profile/TrialCard';
@@ -196,6 +197,7 @@ export default function ProfilePage() {
           />
           <ApiKeySection userId={user.id} accessToken={accessToken} />
           <HaWebhookSettingsCard userId={user.id} accessToken={accessToken} />
+          <AbrpSettingsCard userId={user.id} accessToken={accessToken} />
         </div>
         <div className="flex flex-col gap-4">
           {loadingBilling ? (

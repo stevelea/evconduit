@@ -183,7 +183,7 @@ async def get_user_by_id(user_id: str) -> User | None:
     """
     try:
         response = supabase.table("users") \
-            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at, pushover_user_key, pushover_enabled, pushover_events") \
+            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at, pushover_user_key, pushover_enabled, pushover_events, abrp_token, abrp_enabled") \
             .eq("id", user_id) \
             .maybe_single() \
             .execute()
@@ -818,3 +818,76 @@ def update_ha_url_check(user_id: str, reachable: bool) -> None:
         logger.info(f"[📊] Updated HA URL check for {user_id}: reachable={reachable}")
     except Exception as e:
         logger.error(f"[❌ update_ha_url_check] {e}")
+
+
+def update_abrp_push_stats(user_id: str, success: bool, error: str | None = None) -> None:
+    """
+    Update ABRP telemetry push statistics for a user.
+    Increments success or fail count and updates last push timestamp.
+    Optionally stores an error message.
+    """
+    try:
+        # First get current counts
+        result = supabase.table("users") \
+            .select("abrp_push_success_count, abrp_push_fail_count") \
+            .eq("id", user_id) \
+            .maybe_single() \
+            .execute()
+
+        if not result.data:
+            logger.warning(f"[⚠️] update_abrp_push_stats: User {user_id} not found")
+            return
+
+        current_success = result.data.get("abrp_push_success_count") or 0
+        current_fail = result.data.get("abrp_push_fail_count") or 0
+
+        # Update counts based on success/failure
+        update_data = {
+            "abrp_last_push_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if success:
+            update_data["abrp_push_success_count"] = current_success + 1
+            update_data["abrp_last_error"] = None  # Clear error on success
+        else:
+            update_data["abrp_push_fail_count"] = current_fail + 1
+            if error:
+                update_data["abrp_last_error"] = error
+
+        supabase.table("users") \
+            .update(update_data) \
+            .eq("id", user_id) \
+            .execute()
+
+        logger.debug(f"[📊] Updated ABRP push stats for {user_id}: success={success}, error={error}")
+    except Exception as e:
+        logger.error(f"[❌ update_abrp_push_stats] {e}")
+
+
+def get_abrp_stats(user_id: str) -> dict | None:
+    """Retrieves ABRP push stats for a user including push counts and last error."""
+    try:
+        result = supabase.table("users") \
+            .select("abrp_token, abrp_enabled, abrp_push_success_count, abrp_push_fail_count, abrp_last_push_at, abrp_last_error") \
+            .eq("id", user_id) \
+            .maybe_single() \
+            .execute()
+
+        if result.data:
+            # Mask the token for security (show only last 4 chars)
+            token = result.data.get("abrp_token")
+            masked_token = None
+            if token:
+                masked_token = f"{'*' * (len(token) - 4)}{token[-4:]}" if len(token) > 4 else "****"
+
+            return {
+                "abrp_token": masked_token,
+                "abrp_enabled": result.data.get("abrp_enabled") or False,
+                "push_success_count": result.data.get("abrp_push_success_count") or 0,
+                "push_fail_count": result.data.get("abrp_push_fail_count") or 0,
+                "last_push_at": result.data.get("abrp_last_push_at"),
+                "last_error": result.data.get("abrp_last_error"),
+            }
+        return None
+    except Exception as e:
+        logger.error(f"[❌ get_abrp_stats] {e}")
+        return None

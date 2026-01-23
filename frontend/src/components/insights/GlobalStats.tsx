@@ -63,11 +63,11 @@ export default function GlobalStats() {
       const days = Math.floor(totalMinutes / minutesInDay);
       const remainingMinutes = totalMinutes % minutesInDay;
       const hours = Math.floor(remainingMinutes / minutesInHour);
-      const minutes = remainingMinutes % minutesInHour;
+      const minutes = Math.floor(remainingMinutes % minutesInHour);
       return `${days} days ${hours} hours ${minutes} minutes`;
     } else if (totalMinutes >= minutesInHour) {
       const hours = Math.floor(totalMinutes / minutesInHour);
-      const minutes = totalMinutes % minutesInHour;
+      const minutes = Math.floor(totalMinutes % minutesInHour);
       return `${hours} hours ${minutes} minutes`;
     } else {
       return `${totalMinutes} minutes`;

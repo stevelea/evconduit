@@ -94,3 +94,70 @@ export async function apiFetchSafe(
     return { data: null, error: { message } };
   }
 }
+
+/**
+ * Download charging sessions as CSV file.
+ * Triggers a file download in the browser.
+ */
+export async function downloadChargingSessionsCsv(vehicleId?: string): Promise<void> {
+  // Build URL
+  let url = `/api/charging/sessions/export/csv`;
+  if (vehicleId) {
+    url += `?vehicle_id=${vehicleId}`;
+  }
+
+  // Determine full URL (same logic as apiFetchSafe)
+  let fullUrl: string;
+  if (API_BASE_URL && url.startsWith("/api/")) {
+    const path = url.replace(/^\/api/, "");
+    const base = API_BASE_URL.endsWith("/")
+      ? API_BASE_URL.slice(0, -1)
+      : API_BASE_URL;
+    fullUrl = `${base}${path}`;
+  } else {
+    fullUrl = url;
+  }
+
+  // Get auth token
+  let tokenHeader: Record<string, string> = {};
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      tokenHeader = { Authorization: `Bearer ${session.access_token}` };
+    }
+  } catch {
+    // ignore
+  }
+
+  // Fetch CSV
+  const response = await fetch(fullUrl, {
+    headers: tokenHeader,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Export failed with status ${response.status}`);
+  }
+
+  // Get filename from Content-Disposition header or use default
+  const contentDisposition = response.headers.get("Content-Disposition");
+  let filename = "charging_sessions.csv";
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename=([^;]+)/);
+    if (match) {
+      filename = match[1].replace(/"/g, "");
+    }
+  }
+
+  // Create blob and trigger download
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(downloadUrl);
+}

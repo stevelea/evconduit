@@ -16,6 +16,8 @@ from app.config import ENODE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET
 from app.lib.webhook_logic import process_event
 from app.storage.user import add_user_sms_credits, add_purchased_api_tokens, get_ha_webhook_settings, get_user_by_id, get_user_id_by_stripe_customer_id, remove_stripe_customer_id, update_user_subscription, update_user, update_ha_push_stats
 from app.services.pushover_service import get_pushover_service
+from app.services.abrp_service import get_abrp_service
+from app.storage.user import update_abrp_push_stats
 from app.storage.subscription import get_price_id_map, update_subscription_status, upsert_subscription_from_stripe
 from app.enode.verify import verify_signature
 from app.storage.webhook import save_webhook_event
@@ -301,6 +303,64 @@ async def push_to_homeassistant(event: dict, user_id: str | None):
         update_ha_push_stats(user_id, success=False, error=str(e))
 
 
+async def push_to_abrp(event: dict, user_id: str | None):
+    """Sends vehicle telemetry to ABRP if enabled for the user."""
+    if not user_id:
+        return
+
+    try:
+        user = await get_user_by_id(user_id)
+        if not user:
+            return
+
+        abrp_enabled = getattr(user, "abrp_enabled", False)
+        abrp_token = getattr(user, "abrp_token", None)
+
+        if not abrp_enabled or not abrp_token:
+            return
+
+        vehicle = event.get("vehicle", {})
+        charge_state = vehicle.get("chargeState", {})
+        location = vehicle.get("location", {})
+        odometer_data = vehicle.get("odometer", {})
+
+        # Extract telemetry data from Enode webhook
+        soc = charge_state.get("batteryLevel")
+        is_charging = charge_state.get("isCharging")
+        charge_rate = charge_state.get("chargeRate")  # kW
+        lat = location.get("latitude")
+        lon = location.get("longitude")
+        odometer = odometer_data.get("distance")  # km (may be None)
+
+        # Only send if we have at least SOC
+        if soc is None:
+            logger.debug("[ABRP] Skipping push for user %s - no SOC data", user_id)
+            return
+
+        abrp_service = get_abrp_service()
+        result = await abrp_service.send_telemetry(
+            user_token=abrp_token,
+            soc=soc,
+            is_charging=is_charging,
+            power=charge_rate,
+            lat=lat,
+            lon=lon,
+            odometer=odometer,
+        )
+
+        # Update stats
+        update_abrp_push_stats(user_id, success=result.get("success", False),
+                              error=result.get("message") if not result.get("success") else None)
+
+        if result.get("success"):
+            logger.info("[ABRP] Telemetry sent for user %s: SOC=%s%%, charging=%s", user_id, soc, is_charging)
+        else:
+            logger.warning("[ABRP] Failed to send telemetry for user %s: %s", user_id, result.get("message"))
+
+    except Exception as e:
+        logger.error("[ABRP] Error sending telemetry for user %s: %s", user_id, e)
+
+
 @router.post("/webhook/enode")
 async def handle_webhook(
     request: Request,
@@ -344,6 +404,7 @@ async def handle_webhook(
                 if was_saved:
                     asyncio.create_task(_safe_background_task(push_to_homeassistant(event, user_id), "HA push"))
                     asyncio.create_task(_safe_background_task(send_pushover_notification(event, user_id), "Pushover"))
+                    asyncio.create_task(_safe_background_task(push_to_abrp(event, user_id), "ABRP"))
                 else:
                     logger.info("[⏭️ Skip HA push] Stale data not pushed for user %s", user_id)
         else:
@@ -357,6 +418,7 @@ async def handle_webhook(
                 if was_saved:
                     asyncio.create_task(_safe_background_task(push_to_homeassistant(incoming, user_id), "HA push"))
                     asyncio.create_task(_safe_background_task(send_pushover_notification(incoming, user_id), "Pushover"))
+                    asyncio.create_task(_safe_background_task(push_to_abrp(incoming, user_id), "ABRP"))
                 else:
                     logger.info("[⏭️ Skip HA push] Stale data not pushed for user %s", user_id)
 

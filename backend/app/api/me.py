@@ -10,6 +10,8 @@ from app.auth.supabase_auth import get_supabase_user
 from app.logger import logger
 from app.services.brevo import add_or_update_brevo_contact
 from app.services.pushover_service import get_pushover_service
+from app.services.abrp_service import get_abrp_service
+from app.storage.user import get_abrp_stats
 from app.storage.poll_logs import count_polls_since, count_polls_in_period # NEW: Import count_polls_in_period
 from app.storage.settings import get_setting_by_name
 from app.storage.subscription import get_user_record, get_user_subscription # NEW: Import get_user_subscription
@@ -545,3 +547,154 @@ async def refresh_my_vehicles(user: dict = Depends(get_supabase_user)):
     except Exception as e:
         logger.error(f"[refresh_my_vehicles] Error refreshing vehicles: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail=f"Error refreshing vehicle data: {str(e)}")
+
+
+# ============== ABRP Settings ==============
+
+class ABRPSettingsResponse(BaseModel):
+    """Response model for ABRP settings"""
+    abrp_enabled: bool
+    abrp_token: Optional[str] = None  # Masked token
+    last_push_at: Optional[str] = None
+    push_success_count: int = 0
+    push_fail_count: int = 0
+    last_error: Optional[str] = None
+
+
+class UpdateABRPSettingsRequest(BaseModel):
+    """Request model for updating ABRP settings"""
+    abrp_token: Optional[str] = None
+    abrp_enabled: Optional[bool] = None
+
+
+class ValidateABRPTokenRequest(BaseModel):
+    """Request model for validating an ABRP token"""
+    token: str
+
+
+@router.get("/me/abrp", response_model=ABRPSettingsResponse)
+async def get_abrp_settings(user=Depends(get_supabase_user)):
+    """Get current user's ABRP settings."""
+    user_id = user["sub"]
+
+    stats = get_abrp_stats(user_id)
+    if not stats:
+        return ABRPSettingsResponse(
+            abrp_enabled=False,
+            abrp_token=None,
+            last_push_at=None,
+            push_success_count=0,
+            push_fail_count=0,
+            last_error=None,
+        )
+
+    return ABRPSettingsResponse(
+        abrp_enabled=stats.get("abrp_enabled", False),
+        abrp_token=stats.get("abrp_token"),  # Already masked by get_abrp_stats
+        last_push_at=stats.get("last_push_at"),
+        push_success_count=stats.get("push_success_count", 0),
+        push_fail_count=stats.get("push_fail_count", 0),
+        last_error=stats.get("last_error"),
+    )
+
+
+@router.patch("/me/abrp")
+async def update_abrp_settings(
+    payload: UpdateABRPSettingsRequest,
+    user=Depends(get_supabase_user)
+):
+    """Update user's ABRP settings."""
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update_data = {}
+
+    # If updating token, validate it first (unless clearing)
+    if payload.abrp_token is not None:
+        if payload.abrp_token == "":
+            # Clear the token
+            update_data["abrp_token"] = None
+            update_data["abrp_enabled"] = False
+        else:
+            # Validate the token
+            abrp = get_abrp_service()
+            validation = await abrp.validate_token(payload.abrp_token)
+            if not validation.get("valid"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=validation.get("message", "Invalid ABRP token")
+                )
+            update_data["abrp_token"] = payload.abrp_token
+
+    if payload.abrp_enabled is not None:
+        # Can only enable if user has a valid token
+        if payload.abrp_enabled:
+            current_token = update_data.get("abrp_token") or getattr(local_user, "abrp_token", None)
+            if not current_token:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot enable ABRP without a valid token"
+                )
+        update_data["abrp_enabled"] = payload.abrp_enabled
+
+    if update_data:
+        await update_user(user_id=user_id, **update_data)
+        logger.info(f"[✅] User {user_id} updated ABRP settings")
+
+    return {"success": True, "message": "ABRP settings updated"}
+
+
+@router.post("/me/abrp/validate")
+async def validate_abrp_token(
+    payload: ValidateABRPTokenRequest,
+    user=Depends(get_supabase_user)
+):
+    """Validate an ABRP token without saving it."""
+    abrp = get_abrp_service()
+    result = await abrp.validate_token(payload.token)
+
+    if result.get("valid"):
+        return {
+            "valid": True,
+            "message": "Token is valid"
+        }
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("message", "Invalid token")
+        )
+
+
+@router.post("/me/abrp/test")
+async def send_test_abrp_telemetry(user=Depends(get_supabase_user)):
+    """Send test telemetry to ABRP using saved token."""
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    abrp_token = getattr(local_user, "abrp_token", None)
+    if not abrp_token:
+        raise HTTPException(
+            status_code=400,
+            detail="No ABRP token configured"
+        )
+
+    abrp = get_abrp_service()
+    result = await abrp.send_telemetry(
+        user_token=abrp_token,
+        soc=75,  # Test with realistic dummy values
+        is_charging=False,
+    )
+
+    if result.get("success"):
+        return {"success": True, "message": "Test telemetry sent to ABRP"}
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("message", "Failed to send test telemetry")
+        )

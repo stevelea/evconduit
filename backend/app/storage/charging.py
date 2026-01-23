@@ -411,6 +411,11 @@ async def _finalize_charging_session_by_battery(
         if end_location:
             payload["end_location"] = end_location
 
+        # Add odometer from end of charge sample (most accurate reading at that time)
+        end_odometer = end_sample.get("odometer_km")
+        if end_odometer:
+            payload["odometer_km"] = end_odometer
+
         # Remove None values
         payload = {k: v for k, v in payload.items() if v is not None}
 
@@ -612,6 +617,11 @@ async def regenerate_charging_sessions(days_back: int = 7) -> dict:
                     "model": start_sample.get("model"),
                     "year": start_sample.get("year"),
                 }
+
+                # Add odometer from end sample if available
+                end_odometer = end_sample.get("odometer_km")
+                if end_odometer:
+                    payload["odometer_km"] = end_odometer
 
                 payload = {k: v for k, v in payload.items() if v is not None}
 

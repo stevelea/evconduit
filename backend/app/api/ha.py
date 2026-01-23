@@ -527,6 +527,94 @@ async def get_ha_webhook_status(user: User = Depends(get_api_key_user)):
     return {"registered": False}
 
 
+class OdometerUpdateRequest(BaseModel):
+    odometer_km: float = Field(..., description="Odometer reading in kilometers", gt=0)
+
+
+@router.post("/ha/charging/{vehicle_id}/odometer",
+             summary="Update odometer for latest charging session",
+             dependencies=[Depends(api_key_rate_limit)],
+             )
+async def update_session_odometer(
+    vehicle_id: str,
+    body: OdometerUpdateRequest = Body(...),
+    user: User = Depends(get_api_key_user),
+):
+    """
+    Updates the odometer reading for the most recent charging session.
+    Call this from Home Assistant after a charge completes to record the odometer.
+
+    Example automation:
+    ```yaml
+    automation:
+      - trigger:
+          - platform: state
+            entity_id: binary_sensor.ev_charging
+            from: "on"
+            to: "off"
+        action:
+          - service: rest_command.update_ev_odometer
+            data:
+              odometer_km: "{{ states('sensor.ev_odometer') | float }}"
+    ```
+    """
+    from app.storage.charging_sessions import update_latest_session_odometer
+
+    logger.info(
+        "[update_session_odometer] Updating odometer for vehicle_id=%s, user_id=%s, odometer=%.1f km",
+        vehicle_id,
+        user.id,
+        body.odometer_km,
+    )
+
+    # Verify vehicle ownership
+    try:
+        vehicle = await get_vehicle_by_vehicle_id(vehicle_id)
+    except APIError as e:
+        _handle_api_error(e, vehicle_id, "update_session_odometer")
+    except Exception as e:
+        logger.error(
+            "[update_session_odometer] Error fetching vehicle %s: %s",
+            vehicle_id,
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(status_code=502, detail="Error fetching vehicle data")
+
+    if not vehicle:
+        logger.warning("[update_session_odometer] Vehicle not found: %s", vehicle_id)
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    if vehicle.get("user_id") != user.id:
+        logger.warning(
+            "[update_session_odometer] Access denied for user_id=%s on vehicle_id=%s",
+            user.id,
+            vehicle_id,
+        )
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Update the odometer on the latest session
+    updated = await update_latest_session_odometer(
+        user_id=user.id,
+        vehicle_id=vehicle_id,
+        odometer_km=body.odometer_km
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail="No charging session found for this vehicle"
+        )
+
+    return {
+        "status": "success",
+        "vehicle_id": vehicle_id,
+        "odometer_km": body.odometer_km,
+        "session_id": updated.get("session_id"),
+        "message": "Odometer updated for latest charging session"
+    }
+
+
 @router.post("/ha/refresh",
              summary="Force refresh vehicle data from Enode",
              )
