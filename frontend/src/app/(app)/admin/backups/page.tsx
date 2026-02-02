@@ -13,7 +13,7 @@ export default function BackupsPage() {
       </p>
 
       {/* Overview Cards */}
-      <div className="grid md:grid-cols-2 gap-4 mb-8">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -43,6 +43,19 @@ export default function BackupsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Shield className="w-4 h-4 text-indigo-600" />
+              Offsite Sync
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">Daily at 3:15 AM</div>
+            <p className="text-xs text-gray-500">Via Tailscale to home NAS</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Clock className="w-4 h-4 text-purple-600" />
               Retention Period
             </CardTitle>
@@ -56,13 +69,26 @@ export default function BackupsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Shield className="w-4 h-4 text-orange-600" />
-              Storage Used
+              <HardDrive className="w-4 h-4 text-orange-600" />
+              Local Storage
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">~450 MB</div>
             <p className="text-xs text-gray-500">30 days of backups</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Shield className="w-4 h-4 text-teal-600" />
+              NAS Storage
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">7.3 TB</div>
+            <p className="text-xs text-gray-500">Available for offsite backups</p>
           </CardContent>
         </Card>
       </div>
@@ -193,6 +219,53 @@ ls -la /tmp/config-restore/`}
         />
       </section>
 
+      {/* Offsite Backup */}
+      <section className="mb-8">
+        <h2 className="text-2xl font-semibold mb-4">Offsite Backup (NAS)</h2>
+        <p className="text-gray-600 mb-2">
+          Backups are automatically synced to a home NAS via Tailscale VPN for disaster recovery.
+        </p>
+
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-800 p-4 rounded mb-4">
+          <div className="flex items-center gap-2 font-semibold mb-2">
+            <CheckCircle className="w-5 h-5" />
+            Offsite Backup Status
+          </div>
+          <ul className="list-disc ml-6 space-y-1">
+            <li><strong>Connection:</strong> Tailscale VPN (encrypted WireGuard)</li>
+            <li><strong>NAS Mount:</strong> SMB share at /mnt/nas-backup</li>
+            <li><strong>Sync Schedule:</strong> Daily at 3:15 AM (after local backups)</li>
+            <li><strong>Available Space:</strong> 7.3 TB</li>
+          </ul>
+        </div>
+
+        <h3 className="text-xl font-semibold mt-4 mb-2">Manual Offsite Sync</h3>
+        <CodeBlock
+          code={`# Sync backups to NAS now
+/root/evconduit/scripts/sync-backups-to-nas.sh
+
+# Check NAS mount status
+df -h /mnt/nas-backup
+
+# List files on NAS
+ls -lh /mnt/nas-backup/`}
+          language="bash"
+        />
+
+        <h3 className="text-xl font-semibold mt-4 mb-2">Remount NAS (if disconnected)</h3>
+        <CodeBlock
+          code={`# Check Tailscale status
+tailscale status
+
+# Remount NAS
+mount /mnt/nas-backup
+
+# Or manually
+mount -t cifs //192.168.1.235/evconduit /mnt/nas-backup -o credentials=/root/.smbcredentials,vers=3.0`}
+          language="bash"
+        />
+      </section>
+
       {/* Cron Schedule */}
       <section className="mb-8">
         <h2 className="text-2xl font-semibold mb-4">Automated Schedule</h2>
@@ -202,8 +275,9 @@ ls -la /tmp/config-restore/`}
 crontab -l
 
 # Current schedule:
-# 0 3 * * * /root/evconduit/scripts/backup-supabase.sh   # Database at 3:00 AM
-# 5 3 * * * /root/evconduit/scripts/backup-configs.sh    # Configs at 3:05 AM`}
+# 0 3 * * * /root/evconduit/scripts/backup-supabase.sh      # Database at 3:00 AM
+# 5 3 * * * /root/evconduit/scripts/backup-configs.sh       # Configs at 3:05 AM
+# 15 3 * * * /root/evconduit/scripts/sync-backups-to-nas.sh # NAS sync at 3:15 AM`}
           language="bash"
         />
 
