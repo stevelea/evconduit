@@ -103,3 +103,47 @@ template:
 - Go to **Developer Tools → States**
 - Look for: `sensor.evlink_battery_level`, `binary_sensor.ev_is_charging`, etc.
 - You should see real-time values updating
+
+---
+
+## 🗺️ ABRP Integration (A Better Route Planner)
+
+EVConduit can automatically send your vehicle's live telemetry data to [A Better Route Planner (ABRP)](https://abetterrouteplanner.com/) for accurate route planning with real-time battery information.
+
+### Prerequisites
+- EVConduit configured in Home Assistant (steps above)
+- ABRP app installed on your phone
+
+### Step 1: Get Your ABRP Generic Token
+
+1. Open the **ABRP app** on your phone
+2. Go to your vehicle settings and find **Connections** (or Live Data settings)
+3. Under **In-car live data**, find the **Generic** option and tap **Link**
+
+![ABRP Connections Screen](/docs/images/ABRPToken.png)
+
+4. ABRP will generate a **Generic Token** for your vehicle
+5. Tap **Copy Token** to copy it to your clipboard
+
+![ABRP Generic Token](/docs/images/ABRPGeneric.png)
+
+### Step 2: Configure EVConduit in Home Assistant
+
+1. In Home Assistant, go to **Settings → Devices & Services**
+2. Find **EVConduit** and click on it
+3. Click the **three-dot menu** (⋮) and select **Reconfigure**
+
+![EVConduit Reconfigure Menu](/docs/images/Reconfigure.png)
+
+4. In the reconfigure dialog, paste your **ABRP Token** in the "ABRP Token (optional)" field
+5. Click **Submit**
+
+![EVConduit Reconfigure Dialog](/docs/images/reconfigure2.png)
+
+### Step 3: Verify ABRP Connection
+
+- Open the ABRP app and start planning a route
+- You should see live battery data from your vehicle
+- The data updates automatically when your vehicle state changes
+
+> 💡 **Tip:** You can also configure ABRP directly in EVConduit's web interface at [evconduit.com/profile](https://evconduit.com/profile) under the ABRP Integration section.
