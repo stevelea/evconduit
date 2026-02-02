@@ -199,6 +199,87 @@ template:
           {/* Hardcoded string */}
           <li>Ensure values update according to your tier allowance</li>
         </ul>
+
+        {/* ABRP Integration Section */}
+        <div className="mt-16 border-t pt-6">
+          <h2 className="text-2xl font-semibold">ABRP Integration (A Better Route Planner)</h2>
+          <p className="mt-2">
+            EVConduit can automatically send your vehicle&apos;s live telemetry data to{' '}
+            <a href="https://abetterrouteplanner.com/" className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">
+              A Better Route Planner (ABRP)
+            </a>{' '}
+            for accurate route planning with real-time battery information.
+          </p>
+
+          <h3 className="text-xl font-semibold mt-6">Prerequisites</h3>
+          <ul className="list-disc ml-6">
+            <li>EVConduit configured in Home Assistant (steps above)</li>
+            <li>ABRP app installed on your phone</li>
+          </ul>
+
+          <h3 className="text-xl font-semibold mt-6">Step 1: Get Your ABRP Generic Token</h3>
+          <ol className="list-decimal ml-6 space-y-2 mt-2">
+            <li>Open the <strong>ABRP app</strong> on your phone or visit <a href="https://abetterrouteplanner.com" className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">abetterrouteplanner.com</a> on your computer (easier to copy the token)</li>
+            <li>Go to your vehicle settings and find <strong>Connections</strong> (or Live Data settings)</li>
+            <li>Under <strong>In-car live data</strong>, find the <strong>Generic</strong> option and tap <strong>Link</strong></li>
+          </ol>
+          <div className="my-4">
+            <img
+              src="/docs/images/ABRPToken.png"
+              alt="ABRP Connections Screen"
+              className="rounded-lg border border-gray-300 max-w-md"
+            />
+          </div>
+          <ol className="list-decimal ml-6 space-y-2" start={4}>
+            <li>ABRP will generate a <strong>Generic Token</strong> for your vehicle</li>
+            <li>Tap <strong>Copy Token</strong> to copy it to your clipboard</li>
+          </ol>
+          <div className="my-4">
+            <img
+              src="/docs/images/ABRPGeneric.png"
+              alt="ABRP Generic Token"
+              className="rounded-lg border border-gray-300 max-w-md"
+            />
+          </div>
+
+          <h3 className="text-xl font-semibold mt-6">Step 2: Configure EVConduit in Home Assistant</h3>
+          <ol className="list-decimal ml-6 space-y-2 mt-2">
+            <li>In Home Assistant, go to <strong>Settings → Devices & Services</strong></li>
+            <li>Find <strong>EVConduit</strong> and click on it</li>
+            <li>Click the <strong>three-dot menu</strong> (⋮) and select <strong>Reconfigure</strong></li>
+          </ol>
+          <div className="my-4">
+            <img
+              src="/docs/images/Reconfigure.png"
+              alt="EVConduit Reconfigure Menu"
+              className="rounded-lg border border-gray-300 max-w-full"
+            />
+          </div>
+          <ol className="list-decimal ml-6 space-y-2" start={4}>
+            <li>In the reconfigure dialog, paste your <strong>ABRP Token</strong> in the &quot;ABRP Token (optional)&quot; field</li>
+            <li>Click <strong>Submit</strong></li>
+          </ol>
+          <div className="my-4">
+            <img
+              src="/docs/images/reconfigure2.png"
+              alt="EVConduit Reconfigure Dialog"
+              className="rounded-lg border border-gray-300 max-w-md"
+            />
+          </div>
+
+          <h3 className="text-xl font-semibold mt-6">Step 3: Verify ABRP Connection</h3>
+          <ul className="list-disc ml-6">
+            <li>Open the ABRP app and start planning a route</li>
+            <li>You should see live battery data from your vehicle</li>
+            <li>The data updates automatically when your vehicle state changes</li>
+          </ul>
+
+          <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-800 p-4 rounded mt-4">
+            <strong>💡 Tip:</strong> You can also configure ABRP directly in EVConduit&apos;s web interface at{' '}
+            <a href="https://evconduit.com/profile" className="underline">evconduit.com/profile</a>{' '}
+            under the ABRP Integration section.
+          </div>
+        </div>
       </section>
     </main>
   );

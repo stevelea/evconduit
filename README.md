@@ -19,6 +19,7 @@ EVConduit is a full-stack application for managing electric vehicles through the
 - 📱 SMS notifications (Twilio)
 - 🐳 Docker-based deployment
 - 🏠 Home Assistant integration ready
+- 🗺️ ABRP (A Better Route Planner) integration
 
 ## Features
 

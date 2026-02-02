@@ -116,7 +116,7 @@ EVConduit can automatically send your vehicle's live telemetry data to [A Better
 
 ### Step 1: Get Your ABRP Generic Token
 
-1. Open the **ABRP app** on your phone
+1. Open the **ABRP app** on your phone or visit [abetterrouteplanner.com](https://abetterrouteplanner.com) on your computer (easier to copy the token)
 2. Go to your vehicle settings and find **Connections** (or Live Data settings)
 3. Under **In-car live data**, find the **Generic** option and tap **Link**
 
