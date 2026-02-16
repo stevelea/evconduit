@@ -373,16 +373,15 @@ async def _finalize_charging_session_by_battery(
             except:
                 pass
 
-        # Get charge rates from samples that had charging flag
+        # Calculate average charge rate from energy and duration (most accurate)
+        avg_charge_rate = None
+        if energy_added_kwh and duration_minutes and duration_minutes > 0:
+            avg_charge_rate = energy_added_kwh / (duration_minutes / 60)
+
+        # Get max charge rate from samples (Enode's per-sample rates)
         charging_samples = [s for s in session_samples if s.get("is_charging") or s.get("charge_rate_kw")]
         charge_rates = [s.get("charge_rate_kw") for s in charging_samples if s.get("charge_rate_kw")]
-        avg_charge_rate = sum(charge_rates) / len(charge_rates) if charge_rates else None
-        max_charge_rate = max(charge_rates) if charge_rates else None
-
-        # If no charge rates from samples, estimate from energy/duration
-        if not avg_charge_rate and energy_added_kwh and duration_minutes and duration_minutes > 0:
-            avg_charge_rate = energy_added_kwh / (duration_minutes / 60)
-            max_charge_rate = avg_charge_rate  # Best estimate
+        max_charge_rate = max(charge_rates) if charge_rates else avg_charge_rate
 
         session_id = str(uuid4())
 
