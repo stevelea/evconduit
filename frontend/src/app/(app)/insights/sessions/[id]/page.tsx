@@ -175,11 +175,16 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                   {session.average_charge_rate_kw?.toFixed(1) ?? "-"} kW avg
                   {session.max_charge_rate_kw && (
                     <span className="text-sm text-muted-foreground">
-                      {" "}/ {session.max_charge_rate_kw.toFixed(1)} kW max
+                      {" "}/ {session.max_charge_rate_kw.toFixed(1)} kW peak*
                     </span>
                   )}
                 </p>
                 <p className="text-sm text-muted-foreground">Charge Rate</p>
+                {session.max_charge_rate_kw && (
+                  <p className="text-xs text-muted-foreground/70 mt-1">
+                    *Peak rate based on periodic samples from Enode and may not reflect the true maximum.
+                  </p>
+                )}
               </div>
             </div>
 

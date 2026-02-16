@@ -14,6 +14,7 @@ type PersonalStats = {
   total_kwh_charged: number | null;
   total_minutes_charged: number | null;
   average_charge_rate_kwh_per_hour: number | null;
+  peak_charge_rate_kw: number | null;
   min_start_time: string | null;
   max_end_time: string | null;
   unique_vehicles: number;
@@ -138,6 +139,7 @@ export default function PersonalStatsCard() {
     { icon: Zap, label: "Total kWh Charged", value: formatKwhToLargerUnits(stats.total_kwh_charged) },
     { icon: BatteryCharging, label: "Total Minutes Charged", value: formatMinutesToDuration(stats.total_minutes_charged) },
     { icon: Zap, label: "Average Charge Rate", value: `${stats.average_charge_rate_kwh_per_hour?.toFixed(2) ?? 'N/A'} kWh/h` },
+    { icon: Zap, label: "Peak Charge Rate*", value: `${stats.peak_charge_rate_kw?.toFixed(1) ?? 'N/A'} kW` },
   ];
 
   return (
@@ -162,6 +164,9 @@ export default function PersonalStatsCard() {
             </Card>
           ))}
         </div>
+        <p className="text-xs text-muted-foreground/70 mt-3">
+          *Peak rate is based on periodic samples from Enode and may not reflect the true maximum.
+        </p>
       </CardContent>
     </Card>
   );

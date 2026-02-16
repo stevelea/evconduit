@@ -65,9 +65,14 @@ export default function PowerDeliveryChart({
         <CardTitle className="text-base">Charge Rate</CardTitle>
         {(maxChargeRate || avgChargeRate) && (
           <p className="text-sm text-muted-foreground">
-            {maxChargeRate && `Max: ${maxChargeRate.toFixed(1)} kW`}
+            {maxChargeRate && `Peak: ${maxChargeRate.toFixed(1)} kW*`}
             {maxChargeRate && avgChargeRate && " | "}
             {avgChargeRate && `Avg: ${avgChargeRate.toFixed(1)} kW`}
+          </p>
+        )}
+        {maxChargeRate && (
+          <p className="text-xs text-muted-foreground/70">
+            *Peak rate based on periodic Enode samples and may not reflect the true maximum.
           </p>
         )}
       </CardHeader>
