@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException
-from app.storage.user import get_total_user_count, get_new_user_count
-from app.storage.vehicle import get_total_vehicle_count, get_new_vehicle_count, get_vehicles_by_country
+from app.storage.user import get_total_user_count, get_new_user_count, get_ha_user_count, get_abrp_user_count, get_users_by_country
+from app.storage.vehicle import get_total_vehicle_count, get_new_vehicle_count, get_vehicles_by_country, get_vehicles_by_model
 from app.storage.invoice import get_total_revenue, get_monthly_revenue, get_yearly_revenue
 from app.storage.subscription import count_subscriptions_by_plan, count_users_on_trial
 from app.auth.supabase_auth import get_supabase_user
@@ -149,6 +149,16 @@ async def get_vehicles_by_country_insight(user=Depends(require_admin)):
     return {"vehicles_by_country": countries}
 
 
+@router.get("/insights/users/by-country")
+async def get_users_by_country_insight(user=Depends(require_admin)):
+    """
+    Returns the count of users grouped by country.
+    Uses country_code from the user's first linked vehicle.
+    """
+    countries = await get_users_by_country()
+    return {"users_by_country": countries}
+
+
 @router.get("/insights/all")
 async def get_all_insights(user=Depends(require_admin)):
     """
@@ -177,6 +187,10 @@ async def get_all_insights(user=Depends(require_admin)):
         count_subscriptions_by_plan("Pro"),
         count_users_on_trial(),
         get_vehicles_by_country(),
+        get_ha_user_count(),
+        get_abrp_user_count(),
+        get_users_by_country(),
+        get_vehicles_by_model(),
         return_exceptions=True
     )
 
@@ -197,6 +211,10 @@ async def get_all_insights(user=Depends(require_admin)):
         "pro_subscriptions",
         "users_on_trial",
         "vehicles_by_country",
+        "ha_users",
+        "abrp_users",
+        "users_by_country",
+        "vehicles_by_model",
     ]
 
     response = {}

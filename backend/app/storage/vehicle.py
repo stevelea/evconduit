@@ -153,22 +153,29 @@ async def save_vehicle_data_with_client(vehicle: dict):
 
         # Check if we need to determine country_code (only if we have location and not already cached)
         country_code = None
-        if lat is not None and lon is not None:
-            # Check if vehicle already has country_code cached
-            try:
-                if existing_db_id:
-                    existing = supabase.table("vehicles").select("country_code").eq("id", existing_db_id).maybe_single().execute()
-                else:
-                    existing = supabase.table("vehicles").select("country_code").eq("vehicle_id", vehicle_id).maybe_single().execute()
-                existing_country = existing.data.get("country_code") if existing and existing.data else None
-                if not existing_country:
-                    # Reverse geocode to get country code
+        try:
+            # First check if vehicle already has country_code cached
+            if existing_db_id:
+                existing = supabase.table("vehicles").select("country_code").eq("id", existing_db_id).maybe_single().execute()
+            else:
+                existing = supabase.table("vehicles").select("country_code").eq("vehicle_id", vehicle_id).maybe_single().execute()
+            existing_country = existing.data.get("country_code") if existing and existing.data else None
+
+            if not existing_country:
+                if lat is not None and lon is not None:
+                    # Reverse geocode to get country code from GPS
                     country_code = _get_country_code_from_location(lat, lon)
                     if country_code:
-                        logger.info(f"[🌍 Country cached] Vehicle {vehicle_id}: {country_code}")
-            except Exception as e:
-                # Column might not exist yet - ignore
-                logger.debug(f"[🌍] Could not check/set country_code: {e}")
+                        logger.info(f"[🌍 Country cached] Vehicle {vehicle_id}: {country_code} (from GPS)")
+                else:
+                    # No GPS data - try to use user's default_country_code
+                    user_res = supabase.table("users").select("default_country_code").eq("id", user_id).maybe_single().execute()
+                    if user_res.data and user_res.data.get("default_country_code"):
+                        country_code = user_res.data["default_country_code"]
+                        logger.info(f"[🌍 Country cached] Vehicle {vehicle_id}: {country_code} (from user default)")
+        except Exception as e:
+            # Column might not exist yet - ignore
+            logger.debug(f"[🌍] Could not check/set country_code: {e}")
 
         payload = {
             "vehicle_id":   vehicle_id,
@@ -415,4 +422,53 @@ async def get_vehicles_by_country() -> list[dict]:
 
     except Exception as e:
         logger.error(f"[❌ get_vehicles_by_country] {e}")
+        return []
+
+
+async def get_vehicles_by_model() -> list[dict]:
+    """
+    Returns vehicles grouped by brand + model with count.
+    Parses vehicle_cache JSON to extract information.brand and information.model.
+    Results are cached for 5 minutes.
+    """
+    cache_key = "vehicles_by_model"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
+    supabase = get_supabase_admin_client()
+    try:
+        res = supabase.table("vehicles").select("vehicle_cache").execute()
+        vehicles = res.data or []
+
+        model_counts = defaultdict(int)
+
+        for v in vehicles:
+            cache = v.get("vehicle_cache")
+            if isinstance(cache, str):
+                try:
+                    cache = json.loads(cache)
+                except Exception:
+                    continue
+            if not cache:
+                continue
+
+            info = cache.get("information", {})
+            brand = info.get("brand", "Unknown")
+            model = info.get("model", "Unknown")
+            key = f"{brand} {model}".strip()
+            if key:
+                model_counts[key] += 1
+
+        models = [
+            {"model": model, "count": count}
+            for model, count in model_counts.items()
+        ]
+        models.sort(key=lambda x: x["count"], reverse=True)
+
+        _set_cached(cache_key, models)
+        return models
+
+    except Exception as e:
+        logger.error(f"[❌ get_vehicles_by_model] {e}")
         return []
