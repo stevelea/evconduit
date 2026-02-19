@@ -8,6 +8,7 @@ import {
   Settings,
   Truck,
   Network,
+  Server,
   FileText,
   BarChart2,
   Bell,
@@ -60,6 +61,7 @@ export const navigation: NavigationGroup[] = [
       { title: 'Vendors', href: '/admin/vendors', icon: Network, adminOnly: true }, /* Hardcoded string */
       { title: 'Users', href: '/admin/users', icon: Users, adminOnly: true }, /* Hardcoded string */
       { title: 'Vehicles', href: '/admin/vehicles', icon: Truck, adminOnly: true }, /* Hardcoded string */
+      { title: 'Enode Accounts', href: '/admin/enode-accounts', icon: Server, adminOnly: true },
       { title: 'Webhooks', href: '/admin/webhooks', icon: Network, adminOnly: true }, /* Hardcoded string */
       { title: 'Logs', href: '/admin/logs', icon: FileText, adminOnly: true }, /* Hardcoded string */
       { title: 'Finance', href: '/admin/finance', icon: BarChart2, adminOnly: true }, /* Hardcoded string */
