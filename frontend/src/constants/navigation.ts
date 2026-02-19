@@ -46,7 +46,7 @@ export const navigation: NavigationGroup[] = [
     items: [
       { title: 'Integration Guide', href: '/integration-guide', icon: BookOpen }, /* Hardcoded string */
       { title: 'HA API', href: '/docs/ha-api', icon: Terminal }, /* Hardcoded string */
-      { title: 'Enode Setup', href: '/docs/enode-setup', icon: Server }, /* Hardcoded string */
+      { title: 'Enode Share (PIF)', href: '/docs/enode-setup', icon: Server }, /* Hardcoded string */
       { title: 'Capabilities', href: '/docs/capabilities', icon: Zap }, /* Hardcoded string */
       { title: 'Troubleshooting', href: '/docs/troubleshooting', icon: HelpCircle }, /* Hardcoded string */
       { title: 'Release Notes', href: '/docs/updates', icon: Sparkles }, /* Hardcoded string */
