@@ -84,37 +84,33 @@ class WebhookHealthScheduler:
             except Exception as e:
                 logger.error(f"[WebhookScheduler] Failed to sync subscriptions for {account_name}: {e}")
 
-        # Step 2: Check for active subscriptions across all accounts
+        # Step 2: Check subscriptions per account (not globally)
         result = supabase.table("webhook_subscriptions").select("*").execute()
         subscriptions = result.data or []
 
-        if not subscriptions:
-            logger.warning("[WebhookScheduler] No webhook subscriptions found! Attempting to create for all accounts...")
-            for account in accounts:
+        all_active_subs = []
+        for account in accounts:
+            acct_id = account["id"]
+            account_name = account.get("name", acct_id)
+            acct_subs = [s for s in subscriptions if s.get("enode_account_id") == acct_id]
+            active = [s for s in acct_subs if s.get("is_active")]
+            inactive = [s for s in acct_subs if not s.get("is_active")]
+
+            logger.info(f"[WebhookScheduler] Account '{account_name}': {len(active)} active, {len(inactive)} inactive subscriptions")
+
+            # Reactivate inactive webhooks
+            for sub in inactive:
+                await self._reactivate_webhook(sub.get('enode_webhook_id'), account)
+
+            # If this account has no active subscriptions, create one
+            if not active:
+                logger.warning(f"[WebhookScheduler] Account '{account_name}' has no active subscriptions! Creating...")
                 await self._ensure_webhook_subscription(account)
-            return
 
-        active_subs = [s for s in subscriptions if s.get("is_active")]
-        inactive_subs = [s for s in subscriptions if not s.get("is_active")]
+            all_active_subs.extend(active)
 
-        logger.info(f"[WebhookScheduler] Found {len(active_subs)} active, {len(inactive_subs)} inactive subscriptions")
-
-        if inactive_subs:
-            for sub in inactive_subs:
-                webhook_id = sub.get('enode_webhook_id')
-                acct_id = sub.get('enode_account_id')
-                # Find the matching account for this webhook
-                acct = next((a for a in accounts if a["id"] == acct_id), accounts[0] if accounts else None)
-                if acct:
-                    await self._reactivate_webhook(webhook_id, acct)
-
-        if not active_subs:
-            logger.error("[WebhookScheduler] No active webhook subscriptions! Attempting recovery...")
-            for account in accounts:
-                await self._ensure_webhook_subscription(account)
-            return
-
-        await self._check_event_freshness(active_subs)
+        if all_active_subs:
+            await self._check_event_freshness(all_active_subs)
         logger.info("[WebhookScheduler] Health check complete")
 
     async def _reactivate_webhook(self, webhook_id: str, account: dict):

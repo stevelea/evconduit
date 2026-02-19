@@ -477,6 +477,9 @@ async def register_ha_webhook(
     try:
         success = set_ha_webhook_settings(user.id, body.webhook_id, body.external_url)
         if success:
+            # Clear any stale HA error (e.g. vehicle_id_mismatch from before re-registration)
+            from app.storage.user import clear_ha_last_error
+            clear_ha_last_error(user.id)
             logger.info("[register_ha_webhook] Webhook registered successfully for user %s", user.id)
             return {
                 "status": "success",

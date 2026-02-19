@@ -919,6 +919,15 @@ def update_ha_push_stats(user_id: str, success: bool, error: str | None = None) 
         logger.error(f"[❌ update_ha_push_stats] {e}")
 
 
+def clear_ha_last_error(user_id: str) -> None:
+    """Clear the ha_last_error field for a user (e.g. after re-registering HA webhook)."""
+    try:
+        supabase.table("users").update({"ha_last_error": None}).eq("id", user_id).execute()
+        logger.debug(f"[📊] Cleared ha_last_error for {user_id}")
+    except Exception as e:
+        logger.error(f"[❌ clear_ha_last_error] {e}")
+
+
 def update_ha_url_check(user_id: str, reachable: bool) -> None:
     """
     Update HA URL reachability check result for a user.
