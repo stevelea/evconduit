@@ -36,6 +36,14 @@ type AdminUserView = {
   enode_account_name?: string | null;
 };
 
+type EnodeAccountOption = {
+  id: string;
+  name: string;
+  vehicle_count: number;
+  max_vehicles: number;
+  is_active: boolean;
+};
+
 type PendingDeletionUser = {
   id: string;
   email: string;
@@ -66,6 +74,10 @@ export default function UserAdminPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('linked_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Enode accounts for reassignment dropdown
+  const [enodeAccounts, setEnodeAccounts] = useState<EnodeAccountOption[]>([]);
+  const [reassigningUserId, setReassigningUserId] = useState<string | null>(null);
 
   // Pending deletion state
   const [pendingDeletionUsers, setPendingDeletionUsers] = useState<PendingDeletionUser[]>([]);
@@ -176,6 +188,40 @@ export default function UserAdminPage() {
     }
   }, [accessToken]);
 
+  const fetchEnodeAccounts = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const res = await authFetch('/admin/enode-accounts', { method: 'GET', accessToken });
+      if (!res.error && res.data) {
+        setEnodeAccounts(res.data);
+      }
+    } catch {
+      // silent — dropdown will just be empty
+    }
+  }, [accessToken]);
+
+  const handleReassignAccount = async (userId: string, accountId: string) => {
+    if (!accessToken) return;
+    setReassigningUserId(userId);
+    try {
+      const res = await authFetch(`/admin/users/${userId}/enode-account`, {
+        method: 'PATCH',
+        accessToken,
+        body: JSON.stringify({ enode_account_id: accountId }),
+      });
+      if (res.error) {
+        toast.error('Failed to reassign account');
+      } else {
+        toast.success('Enode account reassigned');
+        fetchUsers();
+      }
+    } catch {
+      toast.error('Could not reassign account');
+    } finally {
+      setReassigningUserId(null);
+    }
+  };
+
   const handleConfirmDeletion = async (userId: string) => {
     if (!accessToken) return;
     setProcessingUserId(userId);
@@ -223,8 +269,9 @@ export default function UserAdminPage() {
     if (user) {
       fetchUsers();
       fetchPendingDeletionUsers();
+      fetchEnodeAccounts();
     }
-  }, [user, fetchUsers, fetchPendingDeletionUsers]);
+  }, [user, fetchUsers, fetchPendingDeletionUsers, fetchEnodeAccounts]);
 
   const handleToggleApproval = async (userId: string, isApproved: boolean) => {
     if (!accessToken) return;
@@ -411,11 +458,23 @@ export default function UserAdminPage() {
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.is_admin ? 'Yes' : 'No'}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.linked_to_enode ? '✓' : '✗'}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      {u.enode_account_name ? (
-                        <span className="inline-block px-2 py-0.5 bg-gray-100 rounded text-xs">{u.enode_account_name}</span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
+                      <select
+                        className="text-xs border border-gray-200 rounded px-2 py-1 bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                        value={u.enode_account_id || ''}
+                        disabled={reassigningUserId === u.id}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleReassignAccount(u.id, e.target.value);
+                          }
+                        }}
+                      >
+                        <option value="">— None —</option>
+                        {enodeAccounts.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            {acc.name} ({acc.vehicle_count}/{acc.max_vehicles})
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-900">
                       {u.vehicles && u.vehicles.length > 0 ? (
@@ -538,7 +597,26 @@ export default function UserAdminPage() {
                   <div><strong>API Calls (30d):</strong> {u.api_calls_30d.toLocaleString()}</div>
                   <div><strong>Admin:</strong> {u.is_admin ? 'Yes' : 'No'}</div>
                   <div><strong>Enode:</strong> {u.linked_to_enode ? '✓' : '✗'}</div>
-                  {u.enode_account_name && <div><strong>Account:</strong> {u.enode_account_name}</div>}
+                  <div className="flex items-center gap-2">
+                    <strong>Account:</strong>
+                    <select
+                      className="text-xs border border-gray-200 rounded px-2 py-1 bg-white disabled:opacity-50"
+                      value={u.enode_account_id || ''}
+                      disabled={reassigningUserId === u.id}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleReassignAccount(u.id, e.target.value);
+                        }
+                      }}
+                    >
+                      <option value="">— None —</option>
+                      {enodeAccounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} ({acc.vehicle_count}/{acc.max_vehicles})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div><strong>Vehicles:</strong> {u.vehicles && u.vehicles.length > 0 ? u.vehicles.map(v => `${v.vendor} (${v.vehicle_id.slice(0,8)}...)`).join(', ') : '–'}</div>
                   {u.days_inactive !== null && u.days_inactive !== undefined && (
                     <div><strong>Days Inactive:</strong> <span className={u.days_inactive > 7 ? 'text-amber-600 font-medium' : ''}>{u.days_inactive}d</span></div>
