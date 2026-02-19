@@ -6,7 +6,7 @@ when webhooks are delayed or inactive. Also supports on-demand refresh.
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.enode.user import get_user_vehicles_enode
 from app.storage.vehicle import save_vehicle_data_with_client
@@ -99,29 +99,32 @@ async def get_users_with_ha_webhooks() -> list[str]:
         return []
 
 
-async def get_users_with_linked_vehicles() -> list[str]:
-    """Get all user IDs that have at least one linked vehicle."""
+async def get_users_with_stale_vehicles(stale_minutes: int = 30) -> list[str]:
+    """Get user IDs whose vehicles haven't been updated recently (stale cache).
+    This catches users who aren't getting webhook updates."""
     supabase = get_supabase_admin_client()
     try:
-        result = supabase.table("vehicles").select("user_id").execute()
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)).isoformat()
+        result = supabase.table("vehicles").select("user_id, updated_at").lt("updated_at", cutoff).execute()
         # Deduplicate user IDs
         return list(set(v["user_id"] for v in (result.data or []) if v.get("user_id")))
     except Exception as e:
-        logger.error(f"[❌] Failed to get users with linked vehicles: {e}")
+        logger.error(f"[❌] Failed to get users with stale vehicles: {e}")
         return []
 
 
 async def poll_all_users_with_ha() -> dict:
     """
-    Poll all users that have linked vehicles.
-    Users with HA webhooks get updates pushed to HA; all users get fresh cache data.
+    Poll users that need fresh vehicle data:
+    1. All users with HA webhooks (for HA push)
+    2. Users with stale vehicle data (no recent webhook updates)
     Returns summary of polling results.
     """
-    # Get all users with linked vehicles (not just HA webhook users)
-    all_vehicle_users = await get_users_with_linked_vehicles()
-    ha_users = set(await get_users_with_ha_webhooks())
-    user_ids = all_vehicle_users
-    logger.info(f"[🔄 Poll All] Starting poll for {len(user_ids)} users ({len(ha_users)} with HA webhooks)")
+    ha_user_ids = await get_users_with_ha_webhooks()
+    stale_user_ids = await get_users_with_stale_vehicles(stale_minutes=30)
+    # Merge and deduplicate
+    user_ids = list(set(ha_user_ids + stale_user_ids))
+    logger.info(f"[🔄 Poll All] Starting poll for {len(user_ids)} users ({len(ha_user_ids)} HA, {len(stale_user_ids)} stale)")
 
     results = {
         "users_polled": 0,
