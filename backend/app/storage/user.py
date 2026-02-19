@@ -56,12 +56,14 @@ async def get_all_users_with_enode_info():
         users = res.data or []
         logger.info(f"ℹ️ Found {len(users)} users in Supabase")
 
+        # Fetch all Enode accounts (needed for both Enode user lookup and account name mapping)
+        accounts = await get_all_enode_accounts()
+
         # Fetch Enode users with caching (5 min TTL) - iterate across all accounts
         logger.info("🔄 Fetching Enode users...")
         enode_lookup = _get_cached("enode_users_lookup")
         if enode_lookup is None:
             enode_users = []
-            accounts = await get_all_enode_accounts()
             for account in accounts:
                 try:
                     after = None
