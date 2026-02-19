@@ -5,7 +5,7 @@ import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from app.auth.supabase_auth import get_supabase_user
-from app.enode.vehicle import get_all_vehicles, get_vehicle_details
+from app.enode.vehicle import get_vehicle_details
 from app.lib.supabase import get_supabase_admin_client
 from app.storage.vehicle import save_vehicle_data_with_client
 from app.storage.enode_account import get_all_enode_accounts, get_enode_account_for_vehicle
@@ -34,64 +34,66 @@ def require_admin(user=Depends(get_supabase_user)):
 async def list_all_vehicles(user=Depends(require_admin)):
     logger.info(f"👮 Admin {user.get('sub') or user.get('id')} requested list of all vehicles")
     try:
-        # Paginate through all Enode vehicles across all accounts
-        vehicles = []
+        supabase = get_supabase_admin_client()
+
+        # Fetch all vehicles from database (cached from webhooks/polling)
+        vehicles_res = supabase.table("vehicles").select("*").execute()
+        db_vehicles = vehicles_res.data or []
+
+        # Fetch accounts for name mapping
         accounts = await get_all_enode_accounts()
         account_name_map = {a["id"]: a.get("name", "Unknown") for a in accounts}
 
-        for account in accounts:
-            try:
-                after = None
-                while True:
-                    data = await get_all_vehicles(account=account, after=after)
-                    page = data.get("data", [])
-                    # Tag each vehicle with its account info
-                    for v in page:
-                        v["enodeAccountId"] = account["id"]
-                        v["enodeAccountName"] = account.get("name", "Unknown")
-                    vehicles.extend(page)
-                    after = data.get("pagination", {}).get("after")
-                    if not after:
-                        break
-            except Exception as acct_err:
-                logger.warning(f"Failed to fetch vehicles from account {account.get('name')}: {acct_err}")
-
-        logger.info(f"Fetched {len(vehicles)} vehicle(s) from Enode across {len(accounts)} account(s)")
-
-        # Enrich vehicles with user info (name, email) and country_code from database
-        supabase = get_supabase_admin_client()
-        user_ids = list(set(v.get("userId") for v in vehicles if v.get("userId")))
-
+        # Fetch user info
+        user_ids = list(set(v.get("user_id") for v in db_vehicles if v.get("user_id")))
         user_map = {}
         if user_ids:
-            users_res = supabase.table("users").select("id, name, email").in_("id", user_ids).execute()
+            users_res = supabase.table("users").select("id, name, email, enode_account_id").in_("id", user_ids).execute()
             for u in (users_res.data or []):
-                user_map[u["id"]] = {"name": u.get("name"), "email": u.get("email")}
+                user_map[u["id"]] = u
 
-        # Fetch country codes from our vehicles table
-        vehicle_ids = [v.get("id") for v in vehicles if v.get("id")]
-        country_map = {}
-        if vehicle_ids:
-            vehicles_res = supabase.table("vehicles").select("vehicle_id, country_code").in_("vehicle_id", vehicle_ids).execute()
-            for veh in (vehicles_res.data or []):
-                if veh.get("country_code"):
-                    country_map[veh["vehicle_id"]] = veh["country_code"]
+        # Build response in the same format the frontend expects
+        vehicles = []
+        for v in db_vehicles:
+            # Parse cached vehicle data
+            cache = {}
+            try:
+                cache = json.loads(v.get("vehicle_cache", "{}")) if v.get("vehicle_cache") else {}
+            except (json.JSONDecodeError, TypeError):
+                cache = {}
 
-        for v in vehicles:
-            user_id = v.get("userId")
-            if user_id and user_id in user_map:
-                v["userName"] = user_map[user_id].get("name")
-                v["userEmail"] = user_map[user_id].get("email")
-            else:
-                v["userName"] = None
-                v["userEmail"] = None
-            # Add country code
-            v["countryCode"] = country_map.get(v.get("id"))
+            user_id = v.get("user_id")
+            user_info = user_map.get(user_id, {})
+            enode_account_id = user_info.get("enode_account_id")
 
+            vehicle = {
+                "id": v.get("vehicle_id"),
+                "userId": user_id,
+                "vendor": v.get("vendor"),
+                "brand": cache.get("information", {}).get("brand", v.get("vendor")),
+                "model": cache.get("information", {}).get("model"),
+                "year": cache.get("information", {}).get("year"),
+                "displayName": cache.get("information", {}).get("displayName"),
+                "vin": cache.get("information", {}).get("vin"),
+                "information": cache.get("information", {}),
+                "chargeState": cache.get("chargeState", {}),
+                "location": cache.get("location"),
+                "odometer": cache.get("odometer"),
+                "isReachable": cache.get("isReachable"),
+                "lastSeen": cache.get("lastSeen", v.get("updated_at")),
+                "userName": user_info.get("name"),
+                "userEmail": user_info.get("email"),
+                "countryCode": v.get("country_code"),
+                "enodeAccountId": enode_account_id,
+                "enodeAccountName": account_name_map.get(enode_account_id, "Unknown") if enode_account_id else "Unassigned",
+            }
+            vehicles.append(vehicle)
+
+        logger.info(f"Fetched {len(vehicles)} vehicle(s) from database")
         return vehicles
     except Exception as e:
-        logger.error(f"[❌ Enode API] Failed to fetch vehicles: {e}")
-        raise HTTPException(status_code=502, detail="Failed to fetch vehicles from Enode")
+        logger.error(f"[❌ Admin Vehicles] Failed to fetch vehicles: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch vehicles")
 
 
 @router.get("/admin/vehicles/debug")
