@@ -99,13 +99,29 @@ async def get_users_with_ha_webhooks() -> list[str]:
         return []
 
 
+async def get_users_with_linked_vehicles() -> list[str]:
+    """Get all user IDs that have at least one linked vehicle."""
+    supabase = get_supabase_admin_client()
+    try:
+        result = supabase.table("vehicles").select("user_id").execute()
+        # Deduplicate user IDs
+        return list(set(v["user_id"] for v in (result.data or []) if v.get("user_id")))
+    except Exception as e:
+        logger.error(f"[❌] Failed to get users with linked vehicles: {e}")
+        return []
+
+
 async def poll_all_users_with_ha() -> dict:
     """
-    Poll all users that have HA webhooks configured.
+    Poll all users that have linked vehicles.
+    Users with HA webhooks get updates pushed to HA; all users get fresh cache data.
     Returns summary of polling results.
     """
-    user_ids = await get_users_with_ha_webhooks()
-    logger.info(f"[🔄 Poll All] Starting poll for {len(user_ids)} users with HA webhooks")
+    # Get all users with linked vehicles (not just HA webhook users)
+    all_vehicle_users = await get_users_with_linked_vehicles()
+    ha_users = set(await get_users_with_ha_webhooks())
+    user_ids = all_vehicle_users
+    logger.info(f"[🔄 Poll All] Starting poll for {len(user_ids)} users ({len(ha_users)} with HA webhooks)")
 
     results = {
         "users_polled": 0,

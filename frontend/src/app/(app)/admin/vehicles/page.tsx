@@ -10,7 +10,7 @@ import { Loader2, Eye, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { authFetch } from '@/lib/authFetch';
 
-type SortKey = 'userName' | 'vendor' | 'model' | 'battery' | 'pluggedIn' | 'lastSeen';
+type SortKey = 'userName' | 'vendor' | 'model' | 'battery' | 'pluggedIn' | 'lastSeen' | 'createdAt';
 type SortDir = 'asc' | 'desc';
 
 // Render vehicles in a table on larger screens and card list on mobile
@@ -26,6 +26,7 @@ type Vehicle = {
   countryCode?: string | null;
   enodeAccountId?: string | null;
   enodeAccountName?: string | null;
+  createdAt?: string | null;
   information: {
     vin: string;
     brand: string;
@@ -102,6 +103,10 @@ export default function VehicleAdminPage() {
           aVal = a.lastSeen || '';
           bVal = b.lastSeen || '';
           break;
+        case 'createdAt':
+          aVal = a.createdAt || '';
+          bVal = b.createdAt || '';
+          break;
         default:
           return 0;
       }
@@ -154,6 +159,7 @@ export default function VehicleAdminPage() {
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('battery')}>Battery<SortIcon column="battery" /></th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('pluggedIn')}>Plugged In<SortIcon column="pluggedIn" /></th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('lastSeen')}>Last Seen<SortIcon column="lastSeen" /></th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('createdAt')}>Added<SortIcon column="createdAt" /></th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
@@ -167,6 +173,7 @@ export default function VehicleAdminPage() {
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.chargeState?.batteryLevel ?? '–'}%</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.chargeState?.isPluggedIn ? 'Yes' : 'No'}</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.lastSeen ? new Date(v.lastSeen).toLocaleString() : '–'}</td>
+                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.createdAt ? new Date(v.createdAt).toLocaleDateString() : '–'}</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                   {v.enodeAccountName ? (
                     <span className="inline-block px-2 py-0.5 bg-gray-100 rounded text-xs">{v.enodeAccountName}</span>
@@ -203,7 +210,7 @@ export default function VehicleAdminPage() {
             ))}
             {!loading && vehicles.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-4 text-center text-sm text-gray-500">No vehicles found.</td>
+                <td colSpan={9} className="px-4 py-4 text-center text-sm text-gray-500">No vehicles found.</td>
               </tr>
             )}
           </tbody>
@@ -245,6 +252,7 @@ export default function VehicleAdminPage() {
               <div><strong>Model:</strong> {v.information.model}</div>
               <div><strong>Battery:</strong> {v.chargeState?.batteryLevel ?? '–'}%</div>
               <div><strong>Last Seen:</strong> {v.lastSeen ? new Date(v.lastSeen).toLocaleString() : '–'}</div>
+              <div><strong>Added:</strong> {v.createdAt ? new Date(v.createdAt).toLocaleDateString() : '–'}</div>
             </div>
           </Card>
         ))}

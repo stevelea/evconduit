@@ -207,7 +207,14 @@ export default function EnodeAccountsPage() {
   return (
     <div className="p-4 space-y-4">
       <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
-        <h1 className="text-xl sm:text-2xl font-bold text-indigo-700">Enode Accounts</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-indigo-700">Enode Accounts</h1>
+          {accounts.length > 0 && (
+            <span className="text-sm font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              {accounts.reduce((sum, a) => sum + a.vehicle_count, 0)} / {accounts.reduce((sum, a) => sum + a.max_vehicles, 0)} vehicles
+            </span>
+          )}
+        </div>
         <div className="flex gap-2 mt-2 sm:mt-0">
           <Button onClick={fetchAccounts} disabled={loading} variant="outline">
             {loading ? <Loader2 className="animate-spin h-4 w-4" /> : 'Refresh'}

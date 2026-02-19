@@ -86,6 +86,7 @@ async def list_all_vehicles(user=Depends(require_admin)):
                 "countryCode": v.get("country_code"),
                 "enodeAccountId": enode_account_id,
                 "enodeAccountName": account_name_map.get(enode_account_id, "Unknown") if enode_account_id else "Unassigned",
+                "createdAt": v.get("created_at"),
             }
             vehicles.append(vehicle)
 
