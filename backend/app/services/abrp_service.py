@@ -9,6 +9,8 @@ from typing import Optional
 
 import httpx
 
+from app.config import ABRP_API_KEY
+
 logger = logging.getLogger(__name__)
 
 ABRP_TELEMETRY_URL = "https://api.iternio.com/1/tlm/send"
@@ -18,9 +20,12 @@ class ABRPService:
     """Service for sending telemetry data to ABRP"""
 
     def __init__(self):
-        # ABRP doesn't require a server-side API key - each user provides their own token
-        self.enabled = True
-        logger.info("🗺️ ABRP service initialized")
+        self.api_key = ABRP_API_KEY
+        self.enabled = bool(self.api_key)
+        if self.enabled:
+            logger.info("🗺️ ABRP service initialized with API key")
+        else:
+            logger.warning("🗺️ ABRP service disabled - no API key configured")
 
     async def send_telemetry(
         self,
@@ -56,6 +61,9 @@ class ABRPService:
         if not user_token:
             return {"success": False, "message": "ABRP token not provided"}
 
+        if not self.api_key:
+            return {"success": False, "message": "ABRP API key not configured on server"}
+
         # Build telemetry object - utc timestamp is required
         tlm_data = {
             "utc": int(time.time()),
@@ -80,6 +88,7 @@ class ABRPService:
 
         try:
             params = {
+                "api_key": self.api_key,
                 "token": user_token,
                 "tlm": json.dumps(tlm_data),
             }
@@ -91,13 +100,26 @@ class ABRPService:
                     timeout=10.0,
                 )
 
-            result = response.json()
+            # ABRP API may return plain text or non-standard JSON
+            # Handle both cases gracefully
+            response_text = response.text.strip()
+            logger.info(f"🗺️ ABRP raw response (status={response.status_code}): {response_text[:200]}")
 
-            if response.status_code == 200 and result.get("status") == "ok":
+            # Try to parse as JSON first
+            try:
+                result = json.loads(response_text)
+                status = result.get("status", "").lower()
+            except json.JSONDecodeError as e:
+                logger.warning(f"🗺️ ABRP response not JSON: {e}")
+                # API might return plain text response
+                status = response_text.lower()
+                result = {"status": status}
+
+            if response.status_code == 200 and status == "ok":
                 logger.info(f"✅ ABRP telemetry sent: soc={soc}, is_charging={is_charging}")
                 return {"success": True, "message": "Telemetry sent successfully"}
             else:
-                error_msg = result.get("status", "Unknown error")
+                error_msg = result.get("message") or result.get("status") or response_text or "Unknown error"
                 logger.warning(f"❌ ABRP API error: {error_msg}")
                 return {"success": False, "message": f"ABRP error: {error_msg}"}
 

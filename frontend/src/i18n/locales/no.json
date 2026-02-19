@@ -69,11 +69,10 @@
           "title": "Pro",
           "price": "4.99 EUR",
           "features": [
-            "5 tilkoblede enheter",
+            "2 tilkoblede enheter",
             "10 000 API-kall per måned",
-            "365 dagers logglagring",
-            "Webhooks (HA + generisk)",
-            "Prioritert støtte (48t/SLA)"
+            "Logglagring TBA",
+            "Støtte så snart vi kan"
           ]
         },
         "custom": {

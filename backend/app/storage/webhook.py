@@ -9,20 +9,28 @@ from app.lib.supabase import get_supabase_admin_client
 logger = logging.getLogger(__name__)
 supabase = get_supabase_admin_client()
 
-async def sync_webhook_subscriptions_from_enode():
+async def sync_webhook_subscriptions_from_enode(account: dict | None = None):
     """
     Fetch current webhook subscriptions from Enode and upsert them to Supabase.
+    If account is provided, sync for that specific account.
+    If account is None, sync across all accounts.
     """
+    if account is None:
+        # Sync across all accounts
+        from app.storage.enode_account import get_all_enode_accounts
+        accounts = await get_all_enode_accounts()
+        for acct in accounts:
+            await sync_webhook_subscriptions_from_enode(acct)
+        return
 
-    logger.info("[🔄] Fetching subscriptions from Enode")
-    enode_subs = await fetch_enode_webhook_subscriptions()
-    logger.info(f"[ℹ️] Found {len(enode_subs)} subscriptions from Enode")
+    account_name = account.get("name", account["id"])
+    logger.info(f"[sync] Fetching subscriptions from Enode for account '{account_name}'")
+    enode_subs = await fetch_enode_webhook_subscriptions(account)
+    logger.info(f"[sync] Found {len(enode_subs)} subscriptions for account '{account_name}'")
 
     for item in enode_subs:
         try:
-            # Log raw Enode response for debugging
             is_active = item.get("isActive", False)
-            logger.info(f"[📡 Enode] Webhook {item.get('id')}: isActive={is_active}, raw keys={list(item.keys())}")
 
             response = supabase.table("webhook_subscriptions").upsert({
                 "enode_webhook_id": item["id"],
@@ -32,15 +40,16 @@ async def sync_webhook_subscriptions_from_enode():
                 "api_version": item.get("apiVersion"),
                 "last_success": item.get("lastSuccess"),
                 "created_at": item.get("createdAt"),
+                "enode_account_id": account["id"],
             }, on_conflict="enode_webhook_id").execute()
 
             if not response.data:
-                logger.warning(f"⚠️ No data returned on upsert for {item['id']}")
+                logger.warning(f"No data returned on upsert for {item['id']}")
             else:
-                logger.info(f"✅ Upserted subscription {item['id']} with is_active={is_active}")
+                logger.info(f"Upserted subscription {item['id']} with is_active={is_active}")
 
         except Exception as e:
-            logger.error(f"❌ Exception while upserting {item['id']}: {e}")
+            logger.error(f"Exception while upserting {item['id']}: {e}")
 
 async def get_all_webhook_subscriptions():
     """Retrieves all webhook subscriptions from the database, ordered by creation date."""

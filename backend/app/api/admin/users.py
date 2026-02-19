@@ -11,6 +11,7 @@ from app.auth.supabase_auth import get_supabase_user
 from app.storage.user import get_all_users_with_enode_info, set_user_approval, delete_user, update_ha_url_check
 from app.enode.user import delete_enode_user
 from app.lib.supabase import get_supabase_admin_client
+from app.storage.enode_account import get_enode_account_for_user, assign_user_to_account
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,53 @@ async def list_all_users(user=Depends(require_admin)):
     users = await get_all_users_with_enode_info()
     logger.info(f"✅ Returning {len(users)} users with merged data")
     return JSONResponse(content=users)
+
+
+# -------------------------
+# Pending Deletion Endpoints (must be before {user_id} routes)
+# -------------------------
+
+@router.get("/admin/users/pending-deletion")
+async def list_pending_deletion_users(current_user=Depends(require_admin)):
+    """Get list of users flagged for pending deletion (inactive accounts awaiting admin review)."""
+    from datetime import datetime, timezone
+    logger.info(f"👮 Admin {current_user.get('sub') or current_user.get('id')} requested pending deletion list")
+    supabase = get_supabase_admin_client()
+
+    try:
+        result = supabase.table("users").select(
+            "id, email, name, created_at, pending_deletion_at, linked_vehicle_count"
+        ).eq("pending_deletion", True).order("pending_deletion_at", desc=True).execute()
+
+        users = result.data or []
+
+        # Calculate days since registration for each user
+        now = datetime.now(timezone.utc)
+        enriched_users = []
+        for user in users:
+            created_at_str = user.get("created_at")
+            days_since_registration = None
+            if created_at_str:
+                try:
+                    created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=timezone.utc)
+                    days_since_registration = (now - created_at).days
+                except (ValueError, TypeError):
+                    pass
+
+            enriched_users.append({
+                **user,
+                "days_since_registration": days_since_registration,
+            })
+
+        logger.info(f"✅ Found {len(enriched_users)} users pending deletion")
+        return JSONResponse(content=enriched_users)
+
+    except Exception as e:
+        logger.error(f"❌ Error fetching pending deletion users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/admin/users/{user_id}")
 async def get_user_details(user_id: str, user=Depends(require_admin)):
@@ -124,25 +172,29 @@ async def remove_user(user_id: str, user=Depends(require_admin)):
     logger.info(f"🗑️ Admin {user.get('sub') or user.get('id')} is attempting to delete user {user_id}")
     try:
         # 1. Delete from Enode (if linked)
-        status_code = await delete_enode_user(user_id)
-        # 204 = deleted successfully, 404 = user not found in Enode (already deleted or never linked)
-        if status_code not in (204, 404):
-            logger.error(f"❌ Failed to delete Enode user {user_id}, status_code: {status_code}")
-            raise HTTPException(status_code=500, detail="Failed to delete user from Enode")
-        logger.info(f"✅ Enode deletion complete for {user_id} (status: {status_code})")
+        account = await get_enode_account_for_user(user_id)
+        if account:
+            status_code = await delete_enode_user(user_id, account)
+            # 204 = deleted successfully, 404 = user not found in Enode (already deleted or never linked)
+            if status_code not in (204, 404):
+                logger.error(f"Failed to delete Enode user {user_id}, status_code: {status_code}")
+                raise HTTPException(status_code=500, detail="Failed to delete user from Enode")
+            logger.info(f"Enode deletion complete for {user_id} (status: {status_code})")
+        else:
+            logger.info(f"No Enode account for user {user_id}, skipping Enode deletion")
 
         # 2. Delete from database
         db_deleted = await delete_user(user_id)
         if not db_deleted:
-            logger.error(f"❌ Failed to delete user {user_id} from database")
+            logger.error(f"Failed to delete user {user_id} from database")
             raise HTTPException(status_code=500, detail="Failed to delete user from database")
 
-        logger.info(f"✅ Successfully deleted user {user_id}")
+        logger.info(f"Successfully deleted user {user_id}")
         return Response(status_code=204)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Exception in remove_user: {e}")
+        logger.error(f"Exception in remove_user: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch("/admin/users/{user_id}/approve", tags=["user"])
@@ -176,7 +228,7 @@ async def update_user_fields(
     allowed_fields = {
         "name", "email", "role", "is_approved", "tier", "subscription_status",
         "notify_offline", "is_on_trial", "trial_ends_at", "sms_credits",
-        "purchased_api_tokens", "ha_webhook_id", "ha_external_url"
+        "purchased_api_tokens", "ha_webhook_id", "ha_external_url", "default_country_code"
     }
     update_data = {k: v for k, v in payload.items() if k in allowed_fields and v is not None}
 
@@ -304,3 +356,99 @@ async def get_user_logs(user_id: str, limit: int = 50, current_user=Depends(requ
     except Exception as e:
         logger.error(f"❌ Error fetching logs for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/admin/users/{user_id}/confirm-deletion")
+async def confirm_user_deletion(user_id: str, current_user=Depends(require_admin)):
+    """
+    Confirm deletion of a user flagged for pending deletion.
+    This permanently deletes the user from both Enode and database.
+    """
+    logger.info(f"🗑️ Admin {current_user.get('sub') or current_user.get('id')} confirming deletion for user {user_id}")
+    supabase = get_supabase_admin_client()
+
+    try:
+        # Verify user exists and is pending deletion
+        user_res = supabase.table("users").select("id, email, pending_deletion").eq("id", user_id).maybe_single().execute()
+        if not user_res.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if not user_res.data.get("pending_deletion"):
+            raise HTTPException(status_code=400, detail="User is not flagged for pending deletion")
+
+        # Delete from Enode (if linked)
+        account = await get_enode_account_for_user(user_id)
+        if account:
+            status_code = await delete_enode_user(user_id, account)
+            if status_code not in (204, 404):
+                logger.error(f"Failed to delete Enode user {user_id}, status_code: {status_code}")
+                raise HTTPException(status_code=500, detail="Failed to delete user from Enode")
+            logger.info(f"Enode deletion complete for {user_id} (status: {status_code})")
+        else:
+            logger.info(f"No Enode account for user {user_id}, skipping Enode deletion")
+
+        # Delete from database
+        db_deleted = await delete_user(user_id)
+        if not db_deleted:
+            logger.error(f"Failed to delete user {user_id} from database")
+            raise HTTPException(status_code=500, detail="Failed to delete user from database")
+
+        logger.info(f"Successfully confirmed deletion of user {user_id} ({user_res.data.get('email')})")
+        return {"success": True, "message": f"User {user_id} has been permanently deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error confirming deletion for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/users/{user_id}/cancel-deletion")
+async def cancel_user_deletion(user_id: str, current_user=Depends(require_admin)):
+    """
+    Cancel pending deletion for a user (keep the account).
+    Clears the pending_deletion flag so the user is no longer flagged for deletion.
+    """
+    logger.info(f"👮 Admin {current_user.get('sub') or current_user.get('id')} cancelling deletion for user {user_id}")
+    supabase = get_supabase_admin_client()
+
+    try:
+        # Verify user exists
+        user_res = supabase.table("users").select("id, email, pending_deletion").eq("id", user_id).maybe_single().execute()
+        if not user_res.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if not user_res.data.get("pending_deletion"):
+            raise HTTPException(status_code=400, detail="User is not flagged for pending deletion")
+
+        # Clear the pending deletion flag
+        supabase.table("users").update({
+            "pending_deletion": False,
+            "pending_deletion_at": None
+        }).eq("id", user_id).execute()
+
+        logger.info(f"✅ Cancelled pending deletion for user {user_id} ({user_res.data.get('email')})")
+        return {"success": True, "message": f"Pending deletion cancelled for user {user_id}"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error cancelling deletion for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/admin/users/{user_id}/enode-account")
+async def reassign_user_enode_account(
+    user_id: str,
+    payload: dict,
+    current_user=Depends(require_admin),
+):
+    """Reassign a user to a different Enode account."""
+    account_id = payload.get("enode_account_id")
+    if not account_id:
+        raise HTTPException(status_code=400, detail="Missing enode_account_id")
+
+    success = await assign_user_to_account(user_id, account_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to reassign user")
+
+    return {"success": True, "message": f"User {user_id} reassigned to account {account_id}"}

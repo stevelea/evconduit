@@ -12,14 +12,14 @@ from fastapi.responses import JSONResponse
 import httpx
 
 from app.api.payments import process_successful_payment_intent
-from app.config import ENODE_WEBHOOK_SECRET, STRIPE_WEBHOOK_SECRET
+from app.config import STRIPE_WEBHOOK_SECRET
 from app.lib.webhook_logic import process_event
 from app.storage.user import add_user_sms_credits, add_purchased_api_tokens, get_ha_webhook_settings, get_user_by_id, get_user_id_by_stripe_customer_id, remove_stripe_customer_id, update_user_subscription, update_user, update_ha_push_stats
 from app.services.pushover_service import get_pushover_service
 from app.services.abrp_service import get_abrp_service
 from app.storage.user import update_abrp_push_stats
 from app.storage.subscription import get_price_id_map, update_subscription_status, upsert_subscription_from_stripe
-from app.enode.verify import verify_signature
+from app.enode.verify import verify_signature_multi
 from app.storage.webhook import save_webhook_event
 from app.services.stripe_utils import log_stripe_webhook
 from app.storage.invoice import find_subscription_id, upsert_invoice_from_stripe
@@ -119,7 +119,7 @@ def _dedupe_batch_by_latest(events: list[dict]) -> list[dict]:
 router = APIRouter()
 
 # Cache for tracking vehicle state changes (for Pushover notifications)
-# Format: {vehicle_id: {"isCharging": bool, "isReachable": bool, "isFullyCharged": bool}}
+# Format: {vehicle_id: {"isCharging": bool, "isReachable": bool, "isFullyCharged": bool, "batteryLevel": int|None}}
 _vehicle_state_cache: dict[str, dict] = {}
 
 
@@ -155,47 +155,104 @@ async def send_pushover_notification(event: dict, user_id: str | None):
         vehicle_name = vehicle_info.get("displayName") or f"{vehicle_info.get('brand', '')} {vehicle_info.get('model', '')}".strip() or "Your vehicle"
 
         # Get previous state
-        prev_state = _vehicle_state_cache.get(vehicle_id, {})
-        prev_charging = prev_state.get("isCharging")
-        prev_reachable = prev_state.get("isReachable")
-        prev_fully_charged = prev_state.get("isFullyCharged")
+        prev_state = _vehicle_state_cache.get(vehicle_id)
 
         # Update cache with current state
         _vehicle_state_cache[vehicle_id] = {
             "isCharging": is_charging,
             "isReachable": is_reachable,
             "isFullyCharged": is_fully_charged,
+            "batteryLevel": battery_level,
         }
+
+        # Skip notifications when we have no previous state (e.g. first event after
+        # container restart).  The first event only seeds the cache so we can detect
+        # real state *transitions* on subsequent events.
+        if prev_state is None:
+            logger.info(
+                "[📱 Pushover] Seeding state cache for vehicle %s (user %s) – skipping notification",
+                vehicle_id, user_id,
+            )
+            return
+
+        prev_charging = prev_state.get("isCharging")
+        prev_reachable = prev_state.get("isReachable")
+        prev_fully_charged = prev_state.get("isFullyCharged")
+        prev_battery = prev_state.get("batteryLevel")
+
+        # Log state transitions for debugging false notifications
+        if prev_charging != is_charging or prev_fully_charged != is_fully_charged:
+            logger.info(
+                "[📱 Pushover] State change for vehicle %s (user %s): "
+                "charging %s→%s, fullyCharged %s→%s, battery %s%%→%s%%",
+                vehicle_id, user_id,
+                prev_charging, is_charging,
+                prev_fully_charged, is_fully_charged,
+                prev_battery, battery_level,
+            )
 
         pushover = get_pushover_service()
         notification_sent = False
 
         # Check for charge_complete event (was charging, now fully charged or stopped charging)
         if pushover_events.get("charge_complete", True):
-            if (prev_charging is True and is_charging is False) or \
-               (prev_fully_charged is not True and is_fully_charged is True):
-                battery_str = f" ({battery_level}%)" if battery_level is not None else ""
-                await pushover.send_notification(
-                    user_key=pushover_user_key,
-                    title="Charging Complete",
-                    message=f"{vehicle_name} has finished charging{battery_str}.",
-                    sound="magic"
-                )
-                logger.info(f"[📱 Pushover] Sent charge_complete notification to user {user_id}")
-                notification_sent = True
+            # Two paths: (a) was charging → stopped, or (b) became fully charged while charging.
+            # Both require prev_charging to be True to avoid false notifications when Enode
+            # sends fluctuating isFullyCharged values for a parked (non-charging) vehicle.
+            stopped_charging = prev_charging is True and is_charging is False
+            became_fully_charged = (prev_charging is True and
+                                    prev_fully_charged is not True and
+                                    is_fully_charged is True)
+
+            if stopped_charging or became_fully_charged:
+                # Sanity check: if battery level didn't increase during the "charging" period,
+                # this was likely a false charging state from Enode (seen with XPENG vendors
+                # and other vendors that briefly flicker isCharging/isFullyCharged for parked
+                # vehicles).  Apply to BOTH detection paths.
+                if prev_battery is not None and battery_level is not None \
+                        and battery_level <= prev_battery:
+                    logger.warning(
+                        "[📱 Pushover] Suppressed charge_complete for user %s – "
+                        "battery didn't increase %s%% → %s%% (likely false data from vendor, "
+                        "path: %s)",
+                        user_id, prev_battery, battery_level,
+                        "stopped_charging" if stopped_charging else "became_fully_charged",
+                    )
+                else:
+                    battery_str = f" ({battery_level}%)" if battery_level is not None else ""
+                    await pushover.send_notification(
+                        user_key=pushover_user_key,
+                        title="Charging Complete",
+                        message=f"{vehicle_name} has finished charging{battery_str}.",
+                        sound="magic"
+                    )
+                    logger.info(f"[📱 Pushover] Sent charge_complete notification to user {user_id}")
+                    notification_sent = True
 
         # Check for charge_started event
+        # Require prev_charging to be explicitly False (not None) to avoid false triggers
+        # after container restarts where the seeded state has isCharging=None.
         if not notification_sent and pushover_events.get("charge_started", False):
             if prev_charging is False and is_charging is True:
-                battery_str = f" (currently at {battery_level}%)" if battery_level is not None else ""
-                await pushover.send_notification(
-                    user_key=pushover_user_key,
-                    title="Charging Started",
-                    message=f"{vehicle_name} has started charging{battery_str}.",
-                    sound="bike"
-                )
-                logger.info(f"[📱 Pushover] Sent charge_started notification to user {user_id}")
-                notification_sent = True
+                # Sanity check: if battery level DROPPED when "charging started",
+                # this is likely false data from Enode (seen with XPENG vendors).
+                # A real charge start should not decrease the battery level.
+                if prev_battery is not None and battery_level is not None and battery_level < prev_battery:
+                    logger.warning(
+                        "[📱 Pushover] Suppressed charge_started for user %s – "
+                        "battery dropped %d%% → %d%% (likely false data from vendor)",
+                        user_id, prev_battery, battery_level,
+                    )
+                else:
+                    battery_str = f" (currently at {battery_level}%)" if battery_level is not None else ""
+                    await pushover.send_notification(
+                        user_key=pushover_user_key,
+                        title="Charging Started",
+                        message=f"{vehicle_name} has started charging{battery_str}.",
+                        sound="bike"
+                    )
+                    logger.info(f"[📱 Pushover] Sent charge_started notification to user {user_id}")
+                    notification_sent = True
 
         # Check for vehicle_offline event
         if not notification_sent and pushover_events.get("vehicle_offline", False):
@@ -370,14 +427,15 @@ async def handle_webhook(
     try:
         raw_body = await request.body()
 
-        # Verify the signature first
-        if not verify_signature(raw_body, x_enode_signature):
-            logger.error("❌ Invalid signature – possible spoofed webhook")
+        # Verify the signature against all active Enode account secrets
+        matched_account_id = await verify_signature_multi(raw_body, x_enode_signature)
+        if not matched_account_id:
+            logger.error("Invalid signature – possible spoofed webhook")
             raise HTTPException(status_code=401, detail="Invalid signature")
 
         # Convert to JSON after verification
         incoming  = json.loads(raw_body)
-        logger.info("[📥 Verified webhook payload] %s", incoming)
+        logger.info("[Verified webhook from account %s] %s", matched_account_id, incoming)
 
         # Track webhook received
         track_webhook_received()

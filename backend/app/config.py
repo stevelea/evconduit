@@ -11,6 +11,8 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
+# Legacy Enode env vars - kept for initial seed/migration only.
+# After migration, all Enode credentials are stored in the enode_accounts DB table.
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 ENODE_WEBHOOK_SECRET = os.getenv("ENODE_WEBHOOK_SECRET")
 ENODE_BASE_URL = os.getenv("ENODE_BASE_URL")
@@ -53,6 +55,9 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # Pushover Configuration
 PUSHOVER_API_TOKEN = os.getenv("PUSHOVER_API_TOKEN")
+
+# ABRP Configuration
+ABRP_API_KEY = os.getenv("ABRP_API_KEY")
 
 ENDPOINT_COST = {
     "/api/ha/status/": 1,

@@ -151,6 +151,40 @@ export function UserDetailHeader({ user, loading, updateUserField, onRefresh }: 
                 </SelectContent>
             </Select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Default Country</label>
+            <p className="text-xs text-gray-500 mb-1">Used when vehicle has no GPS</p>
+            <Select
+                value={user.default_country_code ?? "__none__"}
+                onValueChange={val => updateUserField("default_country_code", val === "__none__" ? null : val)}
+                disabled={saving === "default_country_code"}
+            >
+                <SelectTrigger className="w-full max-w-100">
+                <SelectValue placeholder="Not set" />
+                </SelectTrigger>
+                <SelectContent>
+                <SelectItem value="__none__">Not set</SelectItem>
+                <SelectItem value="AT">Austria</SelectItem>
+                <SelectItem value="BE">Belgium</SelectItem>
+                <SelectItem value="CH">Switzerland</SelectItem>
+                <SelectItem value="DE">Germany</SelectItem>
+                <SelectItem value="DK">Denmark</SelectItem>
+                <SelectItem value="ES">Spain</SelectItem>
+                <SelectItem value="FI">Finland</SelectItem>
+                <SelectItem value="FR">France</SelectItem>
+                <SelectItem value="GB">United Kingdom</SelectItem>
+                <SelectItem value="HU">Hungary</SelectItem>
+                <SelectItem value="IE">Ireland</SelectItem>
+                <SelectItem value="IT">Italy</SelectItem>
+                <SelectItem value="NL">Netherlands</SelectItem>
+                <SelectItem value="NO">Norway</SelectItem>
+                <SelectItem value="PL">Poland</SelectItem>
+                <SelectItem value="PT">Portugal</SelectItem>
+                <SelectItem value="SE">Sweden</SelectItem>
+                <SelectItem value="US">United States</SelectItem>
+                </SelectContent>
+            </Select>
+          </div>
 
         </div>
       </div>

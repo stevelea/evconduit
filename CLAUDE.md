@@ -285,23 +285,30 @@ Example entry:
 ## Production Environment
 
 ### Docker Deployment
-Production runs in Docker containers:
-- **Backend**: `evconduit-backend-1` on port 9100 (maps to internal 8000)
-- **Frontend**: `evconduit-frontend-1` on port 3010 (maps to internal 3000)
-- **Redis**: `evconduit-redis-1` on port 6379
+Production runs in Docker containers with project name `evconduit-new`:
+- **Backend**: `evconduit-new-backend-1` on port 9100 (maps to internal 8000)
+- **Frontend**: `evconduit-new-frontend-1` on port 3010 (maps to internal 3000)
+- **Redis**: `evconduit-new-redis-1` on port 6379
+
+### Starting/Stopping Services
+```bash
+docker compose --project-name evconduit-new up -d           # Start all
+docker compose --project-name evconduit-new up -d --build   # Rebuild and start
+docker compose --project-name evconduit-new down            # Stop all
+```
 
 ### Viewing Production Logs
 ```bash
-docker logs evconduit-backend-1 --tail 100      # Backend logs
-docker logs evconduit-frontend-1 --tail 100     # Frontend logs
-docker logs evconduit-backend-1 -f              # Follow logs in real-time
+docker logs evconduit-new-backend-1 --tail 100      # Backend logs
+docker logs evconduit-new-frontend-1 --tail 100     # Frontend logs
+docker logs evconduit-new-backend-1 -f              # Follow logs in real-time
 ```
 
 ### Restarting Services
 ```bash
-docker compose restart backend    # Restart backend only
-docker compose restart frontend   # Restart frontend only
-docker compose up -d --build      # Rebuild and restart all
+docker compose --project-name evconduit-new restart backend    # Restart backend only
+docker compose --project-name evconduit-new restart frontend   # Restart frontend only
+docker compose --project-name evconduit-new up -d --build      # Rebuild and restart all
 ```
 
 ## Known Enode/Vendor Issues
@@ -322,7 +329,7 @@ docker compose up -d --build      # Rebuild and restart all
 **Evidence**: XPENG app shows "Charging Complete. Unplug Promptly" (confirming plugged in) while Enode API returns `UNPLUGGED` state.
 
 ### Debugging Webhook Issues
-1. Check container logs: `docker logs evconduit-backend-1 --tail 200 | grep -E "(📥|HA push)"`
+1. Check container logs: `docker logs evconduit-new-backend-1 --tail 200 | grep -E "(📥|HA push)"`
 2. Query webhook history:
    ```sql
    SELECT created_at, payload->'vehicle'->'chargeState'

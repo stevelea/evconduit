@@ -12,6 +12,7 @@ from app.storage.webhook_monitor import monitor_webhook_health
 from app.storage.webhook import sync_webhook_subscriptions_from_enode
 from app.enode.webhook import subscribe_to_webhooks, fetch_enode_webhook_subscriptions, test_webhook
 from app.lib.supabase import get_supabase_admin_client
+from app.storage.enode_account import get_all_enode_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -65,86 +66,87 @@ class WebhookHealthScheduler:
             await asyncio.sleep(self.interval_seconds)
 
     async def _run_health_check(self):
-        """Run a complete webhook health check with auto-recovery."""
+        """Run a complete webhook health check with auto-recovery across all accounts."""
         supabase = get_supabase_admin_client()
+        accounts = await get_all_enode_accounts()
 
-        # Step 1: Sync subscriptions from Enode
-        logger.info("[WebhookScheduler] Step 1: Syncing webhook subscriptions from Enode...")
-        try:
-            await sync_webhook_subscriptions_from_enode()
-        except Exception as e:
-            logger.error(f"[WebhookScheduler] Failed to sync subscriptions: {e}")
+        if not accounts:
+            logger.warning("[WebhookScheduler] No Enode accounts configured!")
+            return
 
-        # Step 2: Check for active subscriptions
-        logger.info("[WebhookScheduler] Step 2: Checking subscription status...")
+        for account in accounts:
+            account_name = account.get("name", account["id"])
+            logger.info(f"[WebhookScheduler] Checking account '{account_name}'...")
+
+            # Step 1: Sync subscriptions from Enode for this account
+            try:
+                await sync_webhook_subscriptions_from_enode(account)
+            except Exception as e:
+                logger.error(f"[WebhookScheduler] Failed to sync subscriptions for {account_name}: {e}")
+
+        # Step 2: Check for active subscriptions across all accounts
         result = supabase.table("webhook_subscriptions").select("*").execute()
         subscriptions = result.data or []
 
         if not subscriptions:
-            logger.warning("[WebhookScheduler] No webhook subscriptions found! Attempting to create one...")
-            await self._ensure_webhook_subscription()
+            logger.warning("[WebhookScheduler] No webhook subscriptions found! Attempting to create for all accounts...")
+            for account in accounts:
+                await self._ensure_webhook_subscription(account)
             return
 
-        # Step 3: Check if any are inactive
         active_subs = [s for s in subscriptions if s.get("is_active")]
         inactive_subs = [s for s in subscriptions if not s.get("is_active")]
 
         logger.info(f"[WebhookScheduler] Found {len(active_subs)} active, {len(inactive_subs)} inactive subscriptions")
 
         if inactive_subs:
-            logger.warning(f"[WebhookScheduler] {len(inactive_subs)} inactive subscriptions detected")
-            # Log and attempt to reactivate inactive webhooks
             for sub in inactive_subs:
                 webhook_id = sub.get('enode_webhook_id')
-                logger.warning(f"[WebhookScheduler] Inactive: {webhook_id} - last_success: {sub.get('last_success')}")
-                # Try to reactivate by sending a test event
-                await self._reactivate_webhook(webhook_id)
+                acct_id = sub.get('enode_account_id')
+                # Find the matching account for this webhook
+                acct = next((a for a in accounts if a["id"] == acct_id), accounts[0] if accounts else None)
+                if acct:
+                    await self._reactivate_webhook(webhook_id, acct)
 
-        # Step 4: If no active subscriptions, try to re-subscribe
         if not active_subs:
             logger.error("[WebhookScheduler] No active webhook subscriptions! Attempting recovery...")
-            await self._ensure_webhook_subscription()
+            for account in accounts:
+                await self._ensure_webhook_subscription(account)
             return
 
-        # Step 5: Check if we're receiving events (last_success within threshold)
         await self._check_event_freshness(active_subs)
-
         logger.info("[WebhookScheduler] Health check complete")
 
-    async def _reactivate_webhook(self, webhook_id: str):
+    async def _reactivate_webhook(self, webhook_id: str, account: dict):
         """Attempt to reactivate an inactive webhook by sending a test event."""
         if not webhook_id:
             return
         try:
-            logger.info(f"[WebhookScheduler] Attempting to reactivate webhook {webhook_id} via test endpoint...")
-            result = await test_webhook(webhook_id)
+            logger.info(f"[WebhookScheduler] Attempting to reactivate webhook {webhook_id}...")
+            result = await test_webhook(webhook_id, account)
             logger.info(f"[WebhookScheduler] Webhook {webhook_id} test sent successfully: {result}")
-            # Sync to get updated status
-            await sync_webhook_subscriptions_from_enode()
+            await sync_webhook_subscriptions_from_enode(account)
         except Exception as e:
             logger.error(f"[WebhookScheduler] Failed to reactivate webhook {webhook_id}: {e}")
 
-    async def _ensure_webhook_subscription(self):
-        """Ensure at least one webhook subscription exists and is active."""
+    async def _ensure_webhook_subscription(self, account: dict):
+        """Ensure at least one webhook subscription exists and is active for an account."""
+        account_name = account.get("name", account["id"])
         try:
-            # First check what Enode has
-            logger.info("[WebhookScheduler] Fetching existing Enode subscriptions...")
-            existing = await fetch_enode_webhook_subscriptions()
+            logger.info(f"[WebhookScheduler] Fetching existing subscriptions for {account_name}...")
+            existing = await fetch_enode_webhook_subscriptions(account)
 
             if existing:
-                logger.info(f"[WebhookScheduler] Found {len(existing)} existing Enode subscription(s)")
-                # Sync them to our database
-                await sync_webhook_subscriptions_from_enode()
+                logger.info(f"[WebhookScheduler] Found {len(existing)} existing subscription(s) for {account_name}")
+                await sync_webhook_subscriptions_from_enode(account)
             else:
-                # No subscriptions exist, create one
-                logger.info("[WebhookScheduler] No Enode subscriptions found, creating new subscription...")
-                result = await subscribe_to_webhooks()
-                logger.info(f"[WebhookScheduler] Created new webhook subscription: {result}")
-                # Sync to database
-                await sync_webhook_subscriptions_from_enode()
+                logger.info(f"[WebhookScheduler] No subscriptions found for {account_name}, creating new...")
+                result = await subscribe_to_webhooks(account)
+                logger.info(f"[WebhookScheduler] Created new webhook subscription for {account_name}: {result}")
+                await sync_webhook_subscriptions_from_enode(account)
 
         except Exception as e:
-            logger.error(f"[WebhookScheduler] Failed to ensure webhook subscription: {e}", exc_info=True)
+            logger.error(f"[WebhookScheduler] Failed to ensure webhook for {account_name}: {e}", exc_info=True)
 
     async def _check_event_freshness(self, active_subs: list):
         """Check if we're receiving fresh events."""

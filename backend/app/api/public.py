@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
 
 from app.enode.link import get_link_result
+from app.storage.enode_account import get_all_enode_accounts
 from app.storage.interest import assign_interest_user, get_interest_by_access_code, save_interest
 from app.storage.status_logs import calculate_uptime, get_daily_status, get_status_panel_data
 from app.services.brevo import add_or_update_brevo_contact, remove_brevo_contact_from_list
@@ -65,11 +66,24 @@ async def post_link_result(data: dict):
     if not link_token:
         raise HTTPException(status_code=400, detail="Missing linkToken")
 
-    result = await get_link_result(link_token)
+    # Try each account to resolve the link token (we don't know which account created it)
+    accounts = await get_all_enode_accounts()
+    result = None
+    for account in accounts:
+        try:
+            result = await get_link_result(link_token, account)
+            if result and result.get("userId"):
+                break
+        except Exception:
+            continue
+
+    if not result:
+        raise HTTPException(status_code=400, detail="Failed to resolve link token")
+
     user_id = result.get("userId")
     vendor = result.get("vendor")
 
-    logger.info(f"🔗 Received link result for Enode user_id: {user_id} via token {link_token}")
+    logger.info(f"Received link result for Enode user_id: {user_id} via token {link_token}")
 
     if not user_id or not vendor:
         logger.warning("⚠️ Incomplete data from Enode in link result")

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Loader2, Trash, ChevronUp, ChevronDown } from 'lucide-react';
+import { Loader2, Trash, ChevronUp, ChevronDown, AlertTriangle, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
@@ -31,6 +31,19 @@ type AdminUserView = {
   vehicles: UserVehicle[];
   vehicle_count: number;
   country_code?: string | null;
+  days_inactive?: number | null;
+  enode_account_id?: string | null;
+  enode_account_name?: string | null;
+};
+
+type PendingDeletionUser = {
+  id: string;
+  email: string;
+  name?: string | null;
+  created_at: string;
+  pending_deletion_at: string;
+  linked_vehicle_count: number | null;
+  days_since_registration: number | null;
 };
 
 // Convert country code to flag emoji
@@ -43,7 +56,7 @@ function countryCodeToFlag(countryCode: string | null | undefined): string {
   return String.fromCodePoint(...codePoints);
 }
 
-type SortKey = 'full_name' | 'email' | 'tier' | 'api_calls_30d' | 'vehicle_count' | 'linked_at' | 'is_approved';
+type SortKey = 'full_name' | 'email' | 'tier' | 'api_calls_30d' | 'vehicle_count' | 'linked_at' | 'is_approved' | 'days_inactive';
 type SortDirection = 'asc' | 'desc';
 
 export default function UserAdminPage() {
@@ -53,6 +66,11 @@ export default function UserAdminPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('linked_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Pending deletion state
+  const [pendingDeletionUsers, setPendingDeletionUsers] = useState<PendingDeletionUser[]>([]);
+  const [pendingDeletionLoading, setPendingDeletionLoading] = useState(false);
+  const [processingUserId, setProcessingUserId] = useState<string | null>(null);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -97,6 +115,10 @@ export default function UserAdminPage() {
           aVal = a.is_approved ? 1 : 0;
           bVal = b.is_approved ? 1 : 0;
           break;
+        case 'days_inactive':
+          aVal = a.days_inactive ?? -1;
+          bVal = b.days_inactive ?? -1;
+          break;
       }
 
       if (aVal === null || bVal === null) return 0;
@@ -137,9 +159,72 @@ export default function UserAdminPage() {
     }
   }, [accessToken]);
 
+  const fetchPendingDeletionUsers = useCallback(async () => {
+    if (!accessToken) return;
+    setPendingDeletionLoading(true);
+    try {
+      const res = await authFetch('/admin/users/pending-deletion', { method: 'GET', accessToken });
+      if (res.error) {
+        toast.error('Failed to fetch pending deletion users');
+        return;
+      }
+      setPendingDeletionUsers(res.data || []);
+    } catch {
+      toast.error('Could not load pending deletion users');
+    } finally {
+      setPendingDeletionLoading(false);
+    }
+  }, [accessToken]);
+
+  const handleConfirmDeletion = async (userId: string) => {
+    if (!accessToken) return;
+    setProcessingUserId(userId);
+    try {
+      const res = await authFetch(`/admin/users/${userId}/confirm-deletion`, {
+        method: 'POST',
+        accessToken,
+      });
+      if (res.error) {
+        toast.error('Failed to delete user');
+      } else {
+        toast.success('User permanently deleted');
+        fetchPendingDeletionUsers();
+        fetchUsers();
+      }
+    } catch {
+      toast.error('Could not delete user');
+    } finally {
+      setProcessingUserId(null);
+    }
+  };
+
+  const handleCancelDeletion = async (userId: string) => {
+    if (!accessToken) return;
+    setProcessingUserId(userId);
+    try {
+      const res = await authFetch(`/admin/users/${userId}/cancel-deletion`, {
+        method: 'POST',
+        accessToken,
+      });
+      if (res.error) {
+        toast.error('Failed to cancel deletion');
+      } else {
+        toast.success('User kept - deletion cancelled');
+        fetchPendingDeletionUsers();
+      }
+    } catch {
+      toast.error('Could not cancel deletion');
+    } finally {
+      setProcessingUserId(null);
+    }
+  };
+
   useEffect(() => {
-    if (user) fetchUsers();
-  }, [user, fetchUsers]);
+    if (user) {
+      fetchUsers();
+      fetchPendingDeletionUsers();
+    }
+  }, [user, fetchUsers, fetchPendingDeletionUsers]);
 
   const handleToggleApproval = async (userId: string, isApproved: boolean) => {
     if (!accessToken) return;
@@ -190,6 +275,89 @@ export default function UserAdminPage() {
         </Button>
       </header>
 
+      {/* Pending Deletion Section */}
+      {(pendingDeletionUsers.length > 0 || pendingDeletionLoading) && (
+        <Card className="border-amber-200 bg-amber-50">
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              <h2 className="text-lg font-semibold text-amber-800">
+                Pending Deletion ({pendingDeletionUsers.length})
+              </h2>
+            </div>
+            <p className="text-sm text-amber-700 mb-4">
+              These users registered but never linked a vehicle after 30+ days. Review and decide whether to delete or keep each account.
+            </p>
+
+            {pendingDeletionLoading ? (
+              <div className="space-y-2">
+                {[...Array(2)].map((_, idx) => (
+                  <Skeleton key={idx} className="h-16 w-full bg-amber-100" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {pendingDeletionUsers.map((u) => (
+                  <div
+                    key={u.id}
+                    className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-3 bg-white rounded-lg border border-amber-200"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900 truncate">
+                          {u.name || u.email}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded">
+                          {u.days_since_registration}d inactive
+                        </span>
+                      </div>
+                      <div className="text-sm text-gray-500 truncate">{u.email}</div>
+                      <div className="text-xs text-gray-400">
+                        Registered: {new Date(u.created_at).toLocaleDateString()} |
+                        Flagged: {new Date(u.pending_deletion_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-green-300 text-green-700 hover:bg-green-50"
+                        onClick={() => handleCancelDeletion(u.id)}
+                        disabled={processingUserId === u.id}
+                      >
+                        {processingUserId === u.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="h-4 w-4 mr-1" />
+                            Keep
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleConfirmDeletion(u.id)}
+                        disabled={processingUserId === u.id}
+                      >
+                        {processingUserId === u.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <X className="h-4 w-4 mr-1" />
+                            Delete
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Desktop Table */}
       <Card className="hidden lg:block overflow-auto">
         <table className="min-w-full divide-y divide-gray-200">
@@ -202,7 +370,9 @@ export default function UserAdminPage() {
               <SortHeader label="API Calls (30d)" sortKeyName="api_calls_30d" />
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Admin</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Enode Connected</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
               <SortHeader label="Vehicles" sortKeyName="vehicle_count" />
+              <SortHeader label="Days Inactive" sortKeyName="days_inactive" />
               <SortHeader label="Connected At" sortKeyName="linked_at" />
               <SortHeader label="Approved" sortKeyName="is_approved" />
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -213,7 +383,7 @@ export default function UserAdminPage() {
               // Skeleton rows for desktop
               [...Array(3)].map((_, idx) => (
                 <tr key={idx}>
-                  {Array.from({ length: 11 }).map((__, cIdx) => (
+                  {Array.from({ length: 13 }).map((__, cIdx) => (
                     <td key={cIdx} className="px-4 py-2">
                       <Skeleton className="h-6 w-full bg-indigo-100" />
                     </td>
@@ -240,6 +410,13 @@ export default function UserAdminPage() {
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.api_calls_30d.toLocaleString()}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.is_admin ? 'Yes' : 'No'}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.linked_to_enode ? '✓' : '✗'}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                      {u.enode_account_name ? (
+                        <span className="inline-block px-2 py-0.5 bg-gray-100 rounded text-xs">{u.enode_account_name}</span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-sm text-gray-900">
                       {u.vehicles && u.vehicles.length > 0 ? (
                         <div className="space-y-1">
@@ -256,6 +433,15 @@ export default function UserAdminPage() {
                             </Tooltip>
                           ))}
                         </div>
+                      ) : (
+                        <span className="text-gray-400">–</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                      {u.days_inactive !== null && u.days_inactive !== undefined ? (
+                        <span className={u.days_inactive > 7 ? 'text-amber-600 font-medium' : 'text-gray-500'}>
+                          {u.days_inactive}d
+                        </span>
                       ) : (
                         <span className="text-gray-400">–</span>
                       )}
@@ -279,7 +465,7 @@ export default function UserAdminPage() {
                 ))}
                 {!loading && sortedUsers.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="px-4 py-4 text-center text-sm text-gray-500">No users found.</td>
+                    <td colSpan={13} className="px-4 py-4 text-center text-sm text-gray-500">No users found.</td>
                   </tr>
                 )}
               </>
@@ -352,7 +538,11 @@ export default function UserAdminPage() {
                   <div><strong>API Calls (30d):</strong> {u.api_calls_30d.toLocaleString()}</div>
                   <div><strong>Admin:</strong> {u.is_admin ? 'Yes' : 'No'}</div>
                   <div><strong>Enode:</strong> {u.linked_to_enode ? '✓' : '✗'}</div>
+                  {u.enode_account_name && <div><strong>Account:</strong> {u.enode_account_name}</div>}
                   <div><strong>Vehicles:</strong> {u.vehicles && u.vehicles.length > 0 ? u.vehicles.map(v => `${v.vendor} (${v.vehicle_id.slice(0,8)}...)`).join(', ') : '–'}</div>
+                  {u.days_inactive !== null && u.days_inactive !== undefined && (
+                    <div><strong>Days Inactive:</strong> <span className={u.days_inactive > 7 ? 'text-amber-600 font-medium' : ''}>{u.days_inactive}d</span></div>
+                  )}
                   <div><strong>Connected:</strong> {u.linked_at ? new Date(u.linked_at).toLocaleString() : '–'}</div>
                   <div className="flex items-center"><strong>Approved:</strong>
                     <Switch checked={u.is_approved} onCheckedChange={val => handleToggleApproval(u.id, val)} className="ml-2" />

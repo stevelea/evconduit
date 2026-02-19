@@ -15,6 +15,32 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.02.19',
+    date: 'February 19, 2026',
+    highlights: 'Multi-Enode account support for scaling beyond single account vehicle limits',
+    features: [
+      'Multi-Enode account support - manage multiple Enode API accounts with separate credentials and vehicle limits',
+      'Enode Accounts admin page - view, create, edit, and delete Enode accounts with capacity indicators',
+      'Auto-assignment of new users to the Enode account with the most remaining vehicle capacity',
+      'Admin user reassignment - move users between Enode accounts via the admin panel',
+      'Per-account credential testing from the admin UI',
+      'Multi-secret webhook verification - incoming webhooks are verified against all active account secrets',
+    ],
+    improvements: [
+      'Vehicle and user admin tables now show which Enode account each entry belongs to',
+      'Webhook health monitoring now operates across all Enode accounts',
+      'All Enode API calls now route through the correct account credentials',
+    ],
+  },
+  {
+    version: '2026.02.05',
+    date: 'February 5, 2026',
+    highlights: 'False charging notification suppression for vehicles with bad vendor data',
+    fixes: [
+      'Pushover notifications no longer fire for false charge-started/charge-complete events caused by stale or flipflopping data from vehicle vendors (notably XPENG)',
+    ],
+  },
+  {
     version: '2026.01.22',
     date: 'January 22, 2026',
     highlights: 'ABRP (A Better Route Planner) integration for real-time telemetry',

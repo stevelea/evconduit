@@ -16,6 +16,7 @@ from app.enode.vehicle import set_vehicle_charging
 from app.api.dependencies import api_key_rate_limit, require_basic_or_pro_tier
 from app.dependencies.auth import get_current_user
 from app.storage.user import get_user_by_id, set_ha_webhook_settings, get_ha_webhook_settings
+from app.storage.enode_account import get_enode_account_for_user
 
 # Create a module-specific logger
 logger = logging.getLogger(__name__)
@@ -415,9 +416,14 @@ async def post_vehicle_charging(
             detail="Vehicle does not have an associated Enode ID"
         )
 
-    # 3) Call Enode to start/stop charging
+    # 3) Resolve the Enode account for this user
+    account = await get_enode_account_for_user(user.id)
+    if not account:
+        raise HTTPException(status_code=500, detail="No Enode account assigned to user")
+
+    # 4) Call Enode to start/stop charging
     try:
-        enode_response = await set_vehicle_charging(enode_vehicle_id, action)
+        enode_response = await set_vehicle_charging(enode_vehicle_id, action, account)
         logger.info(
             "[post_vehicle_charging] Enode response for enode_vehicle_id=%s: %s",
             enode_vehicle_id,

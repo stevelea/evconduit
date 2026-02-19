@@ -4,6 +4,7 @@ RETURNS TABLE (
     total_kwh_charged numeric,
     total_minutes_charged numeric,
     average_charge_rate_kwh_per_hour numeric,
+    peak_charge_rate_kw numeric,
     min_start_time timestamp with time zone,
     max_end_time timestamp with time zone,
     unique_vehicles bigint
@@ -20,6 +21,7 @@ BEGIN
             WHEN SUM(cs.duration_minutes) > 0 THEN SUM(cs.energy_added_kwh) / (SUM(cs.duration_minutes) / 60.0)
             ELSE 0
         END AS average_charge_rate_kwh_per_hour,
+        MAX(cs.max_charge_rate_kw) AS peak_charge_rate_kw,
         MIN(cs.start_time) AS min_start_time,
         MAX(cs.end_time) AS max_end_time,
         COUNT(DISTINCT cs.vehicle_id) AS unique_vehicles

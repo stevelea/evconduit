@@ -8,6 +8,7 @@ from app.auth.supabase_auth import get_supabase_user
 from app.enode.vehicle import get_all_vehicles, get_vehicle_details
 from app.lib.supabase import get_supabase_admin_client
 from app.storage.vehicle import save_vehicle_data_with_client
+from app.storage.enode_account import get_all_enode_accounts, get_enode_account_for_vehicle
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,29 @@ def require_admin(user=Depends(get_supabase_user)):
 async def list_all_vehicles(user=Depends(require_admin)):
     logger.info(f"👮 Admin {user.get('sub') or user.get('id')} requested list of all vehicles")
     try:
-        data = await get_all_vehicles()
-        vehicles = data.get("data", [])
-        logger.info(f"✅ Fetched {len(vehicles)} vehicle(s) from Enode")
+        # Paginate through all Enode vehicles across all accounts
+        vehicles = []
+        accounts = await get_all_enode_accounts()
+        account_name_map = {a["id"]: a.get("name", "Unknown") for a in accounts}
+
+        for account in accounts:
+            try:
+                after = None
+                while True:
+                    data = await get_all_vehicles(account=account, after=after)
+                    page = data.get("data", [])
+                    # Tag each vehicle with its account info
+                    for v in page:
+                        v["enodeAccountId"] = account["id"]
+                        v["enodeAccountName"] = account.get("name", "Unknown")
+                    vehicles.extend(page)
+                    after = data.get("pagination", {}).get("after")
+                    if not after:
+                        break
+            except Exception as acct_err:
+                logger.warning(f"Failed to fetch vehicles from account {account.get('name')}: {acct_err}")
+
+        logger.info(f"Fetched {len(vehicles)} vehicle(s) from Enode across {len(accounts)} account(s)")
 
         # Enrich vehicles with user info (name, email) and country_code from database
         supabase = get_supabase_admin_client()
@@ -121,8 +142,13 @@ async def refresh_vehicle_from_enode(vehicle_id: str, user=Depends(require_admin
     logger.info(f"👮 Admin {user.get('sub') or user.get('id')} requested refresh for vehicle {vehicle_id}")
 
     try:
+        # Resolve the Enode account for this vehicle
+        account = await get_enode_account_for_vehicle(vehicle_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="No Enode account found for this vehicle")
+
         # Fetch full vehicle details from Enode
-        vehicle_data = await get_vehicle_details(vehicle_id)
+        vehicle_data = await get_vehicle_details(vehicle_id, account)
         logger.info(f"[📥 Enode Response] Vehicle {vehicle_id} data keys: {list(vehicle_data.keys())}")
 
         location = vehicle_data.get("location")

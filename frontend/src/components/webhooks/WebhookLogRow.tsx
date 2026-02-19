@@ -10,6 +10,7 @@ export type WebhookLog = {
   id: string;
   created_at: string;
   user_id?: string;
+  user_email?: string;
   vehicle_id?: string;
   event: string;
   version?: string;
@@ -45,12 +46,19 @@ export function WebhookLogRow({ log }: { log: WebhookLog }) {
   const first: ParsedPayload =
     Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : (!Array.isArray(parsed) ? parsed : {});
 
+  // Check if this is a user: event (show email for these)
+  const eventType = getStringField(first, "event");
+  const isUserEvent = eventType.startsWith("user:");
+
   return (
     <>
       <tr className="border-t">
         <td className="p-2">{log.created_at ? new Date(log.created_at).toLocaleString() : "-"}</td>
         <td className="p-2">{getStringField(first, "version")}</td>
-        <td className="p-2">{getStringField(first, "event")}</td>
+        <td className="p-2">{eventType}</td>
+        <td className="p-2 text-muted-foreground">
+          {isUserEvent && log.user_email ? log.user_email : "-"}
+        </td>
         <td className="p-2">
           <Button variant="ghost" size="icon" onClick={() => setOpen(true)}>
             <Eye className="w-4 h-4" />

@@ -13,12 +13,14 @@ import {
   Newspaper,
   Bell,
   Database,
+  Server,
 } from 'lucide-react';
 
 const adminLinks = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/vehicles', label: 'Vehicles', icon: Car },
+  { href: '/admin/enode-accounts', label: 'Enode Accounts', icon: Server },
   { href: '/admin/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
   { href: '/admin/logs', label: 'Logs', icon: ScrollText },

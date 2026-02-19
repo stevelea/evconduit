@@ -18,6 +18,8 @@ type GlobalStats = {
   highest_average_charge_rate_kw: number | null;
   min_start_time: string | null;
   max_end_time: string | null;
+  total_vehicles: number | null;
+  total_users: number | null;
 };
 
 export default function GlobalStats() {
@@ -91,8 +93,8 @@ export default function GlobalStats() {
   };
 
   const statItems = [
-    { icon: Users, label: "Users", value: stats.unique_users ?? 0 },
-    { icon: Car, label: "Vehicles", value: stats.unique_vehicles ?? 0 },
+    { icon: Users, label: "Total Users", value: stats.total_users ?? 0 },
+    { icon: Car, label: "Total Vehicles", value: stats.total_vehicles ?? 0 },
     { icon: BatteryCharging, label: "Charging Sessions", value: stats.total_sessions ?? 0 },
     { icon: Zap, label: "Total kWh Charged", value: formatKwhToLargerUnits(stats.total_kwh_charged) },
     { icon: BatteryCharging, label: "Total Minutes Charged", value: stats.total_minutes_charged != null ? formatMinutesToDuration(stats.total_minutes_charged) : 'N/A' },
@@ -115,7 +117,7 @@ export default function GlobalStats() {
       <CardHeader className="px-0 pt-0">
         <CardTitle>Charging Insights</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Statistics based on charging sessions. Users and vehicles count reflect those with recorded charging sessions.
+          Platform statistics and charging session data across all EVConduit users.
         </p>
         {startDate && endDate && (
           <div className="text-sm text-muted-foreground">

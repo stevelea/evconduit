@@ -69,11 +69,10 @@
           "title": "Pro",
           "price": "4.99 EUR",
           "features": [
-            "5 verbundene Geräte",
+            "2 verbundene Geräte",
             "10 000 API-Aufrufe pro Monat",
-            "365 Tage Log-Speicherung",
-            "Webhooks (HA + generisch)",
-            "Priority-Support (48h/SLA)"
+            "Log-Speicherung TBA",
+            "Support so schnell wie möglich"
           ]
         },
         "custom": {

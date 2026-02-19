@@ -16,7 +16,7 @@ export default function IntegrationGuidePage() {
         <h2 className="text-2xl font-semibold">1. Create an Account</h2>
         <ul className="list-disc ml-6">
           {/* Hardcoded string */}
-          <li>Go to <a href="http://backend.evconduit.com:3010/register" className="text-blue-600 underline">evconduit.com/register</a></li>
+          <li>Go to <a href="https://evconduit.com/register" className="text-blue-600 underline">evconduit.com/register</a></li>
           {/* Hardcoded string */}
           <li>Log in using Magic Link or GitHub</li>
         </ul>
@@ -25,7 +25,7 @@ export default function IntegrationGuidePage() {
         <h2 className="text-2xl font-semibold">2. Create API Key</h2>
         <ul className="list-disc ml-6">
           {/* Hardcoded string */}
-          <li>Go to your <a href="http://backend.evconduit.com:3010/profile" className="text-blue-600 underline">Profile</a></li>
+          <li>Go to your <a href="https://evconduit.com/profile" className="text-blue-600 underline">Profile</a></li>
           {/* Hardcoded string */}
           <li>Click <strong>&quot;Create API Key&quot;</strong> and copy the key</li>
         </ul>
@@ -120,8 +120,8 @@ export default function IntegrationGuidePage() {
         <h2 className="text-xl font-semibold">Alternative to HACS component</h2>
         <h3 className="text-xl font-semibold">secrets.yaml</h3>
         <CodeBlock
-          code={`evlink_api_key: "<API_CODE>"
-evlink_status_url: "https://api.evconduit.cloud/api/v1/ha/status/<VEHICLE_ID>"`}
+          code={`evlink_api_key: "Bearer <API_CODE>"
+evlink_status_url: "https://api.evconduit.cloud/api/ha/status/<VEHICLE_ID>"`}
         />
 
         {/* Hardcoded string */}
@@ -134,7 +134,7 @@ evlink_status_url: "https://api.evconduit.cloud/api/v1/ha/status/<VEHICLE_ID>"`}
     resource: !secret evlink_status_url
     method: GET
     headers:
-      X-API-Key: !secret evlink_api_key
+      Authorization: !secret evlink_api_key
     value_template: "ok"
     scan_interval: 300
     json_attributes:
@@ -147,7 +147,7 @@ evlink_status_url: "https://api.evconduit.cloud/api/v1/ha/status/<VEHICLE_ID>"`}
     resource: !secret evlink_status_url
     method: GET
     headers:
-      X-API-Key: !secret evlink_api_key
+      Authorization: !secret evlink_api_key
     value_template: "{{ value_json.batteryLevel }}"
     unit_of_measurement: "%"
     scan_interval: 300

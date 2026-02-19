@@ -69,11 +69,10 @@
           "title": "Pro",
           "price": "4.99 EUR",
           "features": [
-            "5 verbonden apparaten",
+            "2 verbonden apparaten",
             "10 000 API-calls per maand",
-            "365 dagen log bewaring",
-            "Webhooks (HA + generiek)",
-            "Prioriteitsondersteuning (48u/SLA)"
+            "Log bewaring TBA",
+            "Ondersteuning zo snel mogelijk"
           ]
         },
         "custom": {

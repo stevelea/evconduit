@@ -1,14 +1,17 @@
 // app/dashboard/VehicleAdminPage.tsx
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, Eye } from 'lucide-react';
+import { Loader2, Eye, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { authFetch } from '@/lib/authFetch';
+
+type SortKey = 'userName' | 'vendor' | 'model' | 'battery' | 'pluggedIn' | 'lastSeen';
+type SortDir = 'asc' | 'desc';
 
 // Render vehicles in a table on larger screens and card list on mobile
 
@@ -21,6 +24,8 @@ type Vehicle = {
   lastSeen: string;
   isReachable: boolean;
   countryCode?: string | null;
+  enodeAccountId?: string | null;
+  enodeAccountName?: string | null;
   information: {
     vin: string;
     brand: string;
@@ -49,6 +54,63 @@ export default function VehicleAdminPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Vehicle | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('userName');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ column }: { column: SortKey }) => {
+    if (sortKey !== column) return <ArrowUpDown className="inline ml-1 h-3 w-3 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ArrowUp className="inline ml-1 h-3 w-3" />
+      : <ArrowDown className="inline ml-1 h-3 w-3" />;
+  };
+
+  const sortedVehicles = useMemo(() => {
+    const sorted = [...vehicles].sort((a, b) => {
+      let aVal: string | number | boolean;
+      let bVal: string | number | boolean;
+      switch (sortKey) {
+        case 'userName':
+          aVal = (a.userName || '').toLowerCase();
+          bVal = (b.userName || '').toLowerCase();
+          break;
+        case 'vendor':
+          aVal = a.vendor.toLowerCase();
+          bVal = b.vendor.toLowerCase();
+          break;
+        case 'model':
+          aVal = a.information.model.toLowerCase();
+          bVal = b.information.model.toLowerCase();
+          break;
+        case 'battery':
+          aVal = a.chargeState?.batteryLevel ?? -1;
+          bVal = b.chargeState?.batteryLevel ?? -1;
+          break;
+        case 'pluggedIn':
+          aVal = a.chargeState?.isPluggedIn ? 1 : 0;
+          bVal = b.chargeState?.isPluggedIn ? 1 : 0;
+          break;
+        case 'lastSeen':
+          aVal = a.lastSeen || '';
+          bVal = b.lastSeen || '';
+          break;
+        default:
+          return 0;
+      }
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [vehicles, sortKey, sortDir]);
 
   const fetchVehicles = useCallback(async () => {
     if (!accessToken) return;
@@ -86,17 +148,18 @@ export default function VehicleAdminPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {/* Hardcoded string */}<th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-              {/* Hardcoded string */}<th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Vendor</th>
-              {/* Hardcoded string */}<th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Model</th>
-              {/* Hardcoded string */}<th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Battery</th>
-              {/* Hardcoded string */}<th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Plugged In</th>
-              {/* Hardcoded string */}<th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Last Seen</th>
-              {/* Hardcoded string */}<th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('userName')}>User<SortIcon column="userName" /></th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('vendor')}>Vendor<SortIcon column="vendor" /></th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('model')}>Model<SortIcon column="model" /></th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('battery')}>Battery<SortIcon column="battery" /></th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('pluggedIn')}>Plugged In<SortIcon column="pluggedIn" /></th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('lastSeen')}>Last Seen<SortIcon column="lastSeen" /></th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {vehicles.map((v) => (
+            {sortedVehicles.map((v) => (
               <tr key={v.id} className="hover:bg-gray-50">
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{countryCodeToFlag(v.countryCode)} {v.userName || '–'}</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.vendor}</td>
@@ -104,6 +167,13 @@ export default function VehicleAdminPage() {
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.chargeState?.batteryLevel ?? '–'}%</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.chargeState?.isPluggedIn ? 'Yes' : 'No'}</td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{v.lastSeen ? new Date(v.lastSeen).toLocaleString() : '–'}</td>
+                <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                  {v.enodeAccountName ? (
+                    <span className="inline-block px-2 py-0.5 bg-gray-100 rounded text-xs">{v.enodeAccountName}</span>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
+                </td>
                 <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
                   <Dialog>
                     <DialogTrigger asChild>
@@ -133,7 +203,7 @@ export default function VehicleAdminPage() {
             ))}
             {!loading && vehicles.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-4 text-center text-sm text-gray-500">No vehicles found.</td>
+                <td colSpan={8} className="px-4 py-4 text-center text-sm text-gray-500">No vehicles found.</td>
               </tr>
             )}
           </tbody>

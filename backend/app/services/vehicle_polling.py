@@ -12,6 +12,7 @@ from app.enode.user import get_user_vehicles_enode
 from app.storage.vehicle import save_vehicle_data_with_client
 from app.storage.charging import save_charging_sample, check_and_create_charging_session
 from app.lib.supabase import get_supabase_admin_client
+from app.storage.enode_account import get_enode_account_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,12 @@ async def poll_vehicle_for_user(user_id: str) -> list[dict]:
     updated_vehicles = []
 
     try:
-        vehicles = await get_user_vehicles_enode(user_id)
+        account = await get_enode_account_for_user(user_id)
+        if not account:
+            logger.warning(f"[Poll] No Enode account for user {user_id}, skipping")
+            return updated_vehicles
+
+        vehicles = await get_user_vehicles_enode(user_id, account)
         logger.info(f"[🔄 Poll] User {user_id}: fetched {len(vehicles)} vehicles from Enode")
 
         for vehicle in vehicles:

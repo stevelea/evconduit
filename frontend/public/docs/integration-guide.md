@@ -26,7 +26,7 @@
 
 ```yaml
 evlink_api_key: "Bearer <API_CODE>"
-evlink_status_url: "https://evconduit.com/api/status/<VEHICLE_ID>"
+evlink_status_url: "https://api.evconduit.cloud/api/ha/status/<VEHICLE_ID>"
 ```
 
 Replace `<API_CODE>` and `<VEHICLE_ID>` with your actual values.

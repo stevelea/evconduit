@@ -9,6 +9,7 @@ export function WebhookLogTable({ logs }: { logs: WebhookLog[] }) {
           <th className="p-2">Created</th>
           <th className="p-2">Version</th>
           <th className="p-2">Event</th>
+          <th className="p-2">User</th>
           <th className="p-2">Details</th>
         </tr>
       </thead>

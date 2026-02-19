@@ -25,6 +25,7 @@ from app.logger import logger
 from app.storage.telemetry import log_api_telemetry
 from app.services.webhook_scheduler import webhook_scheduler
 from app.services.vehicle_polling import vehicle_polling_scheduler
+from app.services.inactive_user_cleanup import inactive_user_cleanup_scheduler
 from app.services.metrics import track_api_request
 
 # Initialize Sentry
@@ -50,9 +51,17 @@ async def lifespan(app: FastAPI):
     await vehicle_polling_scheduler.start()
     logger.info("✅ Vehicle polling scheduler started")
 
+    logger.info("🔄 Starting inactive user cleanup scheduler...")
+    await inactive_user_cleanup_scheduler.start()
+    logger.info("✅ Inactive user cleanup scheduler started")
+
     yield
 
     # Shutdown
+    logger.info("🛑 Stopping inactive user cleanup scheduler...")
+    await inactive_user_cleanup_scheduler.stop()
+    logger.info("✅ Inactive user cleanup scheduler stopped")
+
     logger.info("🛑 Stopping vehicle polling scheduler...")
     await vehicle_polling_scheduler.stop()
     logger.info("✅ Vehicle polling scheduler stopped")

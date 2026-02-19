@@ -8,6 +8,7 @@ from app.auth.supabase_auth import get_supabase_user
 from app.enode.link import create_link_session
 from app.enode.user import get_user_vehicles_enode, unlink_vendor
 from app.storage.api_key import create_api_key, get_api_key_info
+from app.storage.enode_account import get_enode_account_for_user, get_best_account_for_new_user, assign_user_to_account
 from app.storage.insights import get_global_stats_row, get_user_stats_row
 from app.storage.invoice import get_user_invoices
 from app.storage.subscription import get_user_record, get_user_subscription
@@ -188,9 +189,18 @@ async def api_create_link_session(
     """Create a linking session for a vehicle vendor via Enode v3."""
     try:
         user_id = user["sub"]
-        logger.info(f"🔗 Creating link session for user {user_id} and vendor {request.vendor}")
+        logger.info(f"Creating link session for user {user_id} and vendor {request.vendor}")
 
-        session = await create_link_session(user_id=user_id, vendor=request.vendor)
+        # Auto-assign user to an Enode account if not already assigned
+        account = await get_enode_account_for_user(user_id)
+        if not account:
+            account = await get_best_account_for_new_user()
+            if not account:
+                raise HTTPException(status_code=503, detail="No Enode account capacity available")
+            await assign_user_to_account(user_id, account["id"])
+            logger.info(f"Auto-assigned user {user_id} to Enode account '{account['name']}'")
+
+        session = await create_link_session(user_id=user_id, account=account, vendor=request.vendor)
 
         link_url = session.get("linkUrl")
         link_token = session.get("linkToken")
@@ -215,9 +225,13 @@ async def api_create_link_session(
 async def unlink_vendor_route(payload: UnlinkRequest, user=Depends(get_supabase_user)):
     """Unlinks a vehicle vendor for the current user."""
     user_id = user["sub"]
-    logger.info(f"🔗 Unlinking vendor {payload.vendor} for user {user_id}")
+    logger.info(f"Unlinking vendor {payload.vendor} for user {user_id}")
 
-    success, error = await unlink_vendor(user_id=user_id, vendor=payload.vendor)
+    account = await get_enode_account_for_user(user_id)
+    if not account:
+        raise HTTPException(status_code=500, detail="No Enode account assigned to user")
+
+    success, error = await unlink_vendor(user_id=user_id, vendor=payload.vendor, account=account)
 
     if not success:
         logger.error(f"❌ Unlink failed for user {user_id}: {error}")

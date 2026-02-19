@@ -69,11 +69,10 @@
           "title": "Pro",
           "price": "4.99 EUR",
           "features": [
-            "5 dispositivos conectados",
+            "2 dispositivos conectados",
             "10 000 llamadas API por mes",
-            "365 días de retención de logs",
-            "Webhooks (HA + genérico)",
-            "Soporte prioritario (48h/SLA)"
+            "Retención de logs TBA",
+            "Soporte lo antes posible"
           ]
         },
         "custom": {

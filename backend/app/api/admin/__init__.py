@@ -11,6 +11,7 @@ from .insights import router as insights_router
 from .finance import router as finance_router
 from .email import router as email_router
 from .metrics import router as metrics_router
+from .enode_accounts import router as enode_accounts_router
 
 routers = [
     # admin_router,
@@ -24,4 +25,5 @@ routers = [
     finance_router,
     email_router,
     metrics_router,
+    enode_accounts_router,
 ]

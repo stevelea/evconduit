@@ -5,6 +5,7 @@ from typing import Any
 from supabase import create_client, Client
 from app.lib.supabase import get_supabase_admin_client
 from app.enode.user import get_all_users as get_enode_users
+from app.storage.enode_account import get_all_enode_accounts
 from app.models.user import User
 from app.logger import logger
 from datetime import datetime, timezone, timedelta
@@ -51,19 +52,30 @@ async def get_all_users_with_enode_info():
     """
     try:
         logger.info("🔎 Fetching Supabase users...")
-        res = supabase.table("users").select("id, email, name, role, is_approved, tier").limit(1000).execute()
+        res = supabase.table("users").select("id, email, name, role, is_approved, tier, created_at, enode_account_id").limit(1000).execute()
         users = res.data or []
         logger.info(f"ℹ️ Found {len(users)} users in Supabase")
 
-        # Fetch Enode users with caching (5 min TTL)
+        # Fetch Enode users with caching (5 min TTL) - iterate across all accounts
         logger.info("🔄 Fetching Enode users...")
         enode_lookup = _get_cached("enode_users_lookup")
         if enode_lookup is None:
-            enode_data = await get_enode_users()
-            enode_users = enode_data.get("data", [])
+            enode_users = []
+            accounts = await get_all_enode_accounts()
+            for account in accounts:
+                try:
+                    after = None
+                    while True:
+                        enode_data = await get_enode_users(account=account, after=after)
+                        enode_users.extend(enode_data.get("data", []))
+                        after = enode_data.get("pagination", {}).get("after")
+                        if not after:
+                            break
+                except Exception as acct_err:
+                    logger.warning(f"⚠️ Failed to fetch Enode users for account {account.get('name')}: {acct_err}")
             enode_lookup = {u["id"]: u for u in enode_users}
             _set_cached("enode_users_lookup", enode_lookup)
-            logger.info(f"ℹ️ Found {len(enode_users)} users in Enode (fresh)")
+            logger.info(f"ℹ️ Found {len(enode_users)} users in Enode across {len(accounts)} account(s) (fresh)")
         else:
             logger.info("ℹ️ Using cached Enode users data")
 
@@ -108,12 +120,32 @@ async def get_all_users_with_enode_info():
                 uid = log.get("user_id")
                 poll_counts[uid] = poll_counts.get(uid, 0) + 1
 
+        # Build account name lookup
+        account_name_map = {}
+        for account in accounts:
+            account_name_map[account["id"]] = account.get("name", "Unknown")
+
         enriched = []
+        now = datetime.now(timezone.utc)
         for user in users:
             uid = user["id"]
             enode_match = enode_lookup.get(uid)
             user_vehicles = vehicles_by_user.get(uid, [])
 
+            # Calculate days since account creation for users with no vehicles
+            days_inactive = None
+            if len(user_vehicles) == 0:
+                created_at_str = user.get("created_at")
+                if created_at_str:
+                    try:
+                        created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
+                        if created_at.tzinfo is None:
+                            created_at = created_at.replace(tzinfo=timezone.utc)
+                        days_inactive = (now - created_at).days
+                    except (ValueError, TypeError):
+                        pass
+
+            enode_acct_id = user.get("enode_account_id")
             enriched.append({
                 "id": uid,
                 "full_name": user.get("name"),
@@ -127,6 +159,9 @@ async def get_all_users_with_enode_info():
                 "vehicles": user_vehicles,
                 "vehicle_count": len(user_vehicles),
                 "country_code": country_by_user.get(uid),
+                "days_inactive": days_inactive,
+                "enode_account_id": enode_acct_id,
+                "enode_account_name": account_name_map.get(enode_acct_id) if enode_acct_id else None,
             })
 
         return enriched
@@ -572,6 +607,88 @@ async def get_total_user_count() -> int:
     except Exception as e:
         logger.error(f"[❌ get_total_user_count] {e}")
         return 0
+
+
+async def get_ha_user_count() -> int:
+    """
+    Returns the number of users actively using the Home Assistant integration.
+    A user is considered an HA user if they have made API calls (poll_logs) in the last 30 days.
+    """
+    try:
+        # Use the RPC function to get distinct users with poll activity
+        res = supabase.rpc("get_poll_counts_by_user", {"days_ago": 30}).execute()
+        return len(res.data) if res.data else 0
+    except Exception as e:
+        logger.error(f"[❌ get_ha_user_count] {e}")
+        return 0
+
+
+async def get_abrp_user_count() -> int:
+    """
+    Returns the number of users with ABRP integration enabled.
+    """
+    try:
+        res = supabase.table("users").select("id", count="exact").eq("abrp_enabled", True).execute()
+        return res.count
+    except Exception as e:
+        logger.error(f"[❌ get_abrp_user_count] {e}")
+        return 0
+
+
+async def get_users_by_country() -> list[dict]:
+    """
+    Returns users grouped by country with count.
+    Uses country_code from the user's first vehicle.
+    Returns list of {country_code, country, count} sorted by count descending.
+    """
+    try:
+        # Get distinct user country codes from vehicles table
+        # Each user is counted once based on their first vehicle's country_code
+        res = supabase.table("vehicles").select("user_id, country_code").execute()
+        vehicles = res.data or []
+
+        # Track unique users per country (first vehicle's country wins)
+        user_countries = {}
+        for v in vehicles:
+            user_id = v.get("user_id")
+            country_code = v.get("country_code")
+            if user_id and country_code and user_id not in user_countries:
+                user_countries[user_id] = country_code
+
+        # Count users per country
+        from collections import defaultdict
+        country_counts = defaultdict(int)
+        for country_code in user_countries.values():
+            country_counts[country_code] += 1
+
+        # Country name lookup
+        country_name_map = {
+            "SE": "Sweden", "NO": "Norway", "DK": "Denmark", "FI": "Finland",
+            "DE": "Germany", "NL": "Netherlands", "BE": "Belgium", "FR": "France",
+            "GB": "United Kingdom", "US": "United States", "CA": "Canada",
+            "AU": "Australia", "NZ": "New Zealand", "IT": "Italy", "ES": "Spain",
+            "PT": "Portugal", "AT": "Austria", "CH": "Switzerland", "PL": "Poland",
+            "CZ": "Czech Republic", "IE": "Ireland", "LU": "Luxembourg",
+            "GR": "Greece", "IL": "Israel", "EG": "Egypt", "TH": "Thailand",
+            "MY": "Malaysia", "SG": "Singapore", "ID": "Indonesia",
+            "UY": "Uruguay", "CO": "Colombia",
+        }
+
+        # Convert to sorted list
+        countries = [
+            {
+                "country_code": code,
+                "country": country_name_map.get(code, code),
+                "count": count
+            }
+            for code, count in country_counts.items()
+        ]
+        countries.sort(key=lambda x: x["count"], reverse=True)
+
+        return countries
+    except Exception as e:
+        logger.error(f"[❌ get_users_by_country] {e}")
+        return []
 
 async def get_new_user_count(days: int) -> int:
     """

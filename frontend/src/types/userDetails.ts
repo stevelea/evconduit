@@ -18,4 +18,7 @@ export type UserDetails = {
   ha_last_push_at?: string | null;
   ha_last_check_at?: string | null;
   ha_url_reachable?: boolean | null;
+  default_country_code?: string | null;
+  enode_account_id?: string | null;
+  enode_account_name?: string | null;
 };
