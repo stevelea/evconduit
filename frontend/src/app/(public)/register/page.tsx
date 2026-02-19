@@ -10,12 +10,25 @@ export default function RegisterPage() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [email, setEmail] = useState('');
 
+  const [capacityFull, setCapacityFull] = useState(false);
+
   useEffect(() => {
     const checkRegistration = async () => {
       try {
-        const res = await fetch('https://backend.evconduit.com/api/public/registration-allowed');
-        const json = await res.json();
-        setAllowRegister(json.allowed === true);
+        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://backend.evconduit.com/api';
+        const [regRes, capRes] = await Promise.all([
+          fetch(`${apiUrl}/public/registration-allowed`),
+          fetch(`${apiUrl}/public/vehicle-capacity`),
+        ]);
+        const regJson = await regRes.json();
+        const capJson = capRes.ok ? await capRes.json() : {};
+
+        if (capJson.is_full === true) {
+          setCapacityFull(true);
+          setAllowRegister(false);
+        } else {
+          setAllowRegister(regJson.allowed === true);
+        }
       } catch (err) {
         console.error('❌ Failed to check registration status:', err); /* Hardcoded string */
         setAllowRegister(false);
@@ -38,7 +51,7 @@ export default function RegisterPage() {
       <div className="bg-white p-6 rounded shadow-md w-full max-w-md">
         {/* Hardcoded string */}
         <h1 className="text-2xl font-extrabold text-indigo-700 mb-4 text-center">
-          {allowRegister ? 'Create Account' : 'Stay Updated'}
+          {allowRegister ? 'Create Account' : capacityFull ? 'We\'re at Full Capacity' : 'Stay Updated'}
         </h1>
 
         {magicLinkSent ? (
@@ -59,7 +72,10 @@ export default function RegisterPage() {
               </a>
             </>
           ) : (
-            <>EVConduit is currently under development. You&apos;ll be the first to know when we launch.</>
+            <>{capacityFull
+              ? 'All vehicle slots are currently taken. Check back soon or subscribe to be notified when spots open up.'
+              : 'EVConduit is currently under development. You\u0027ll be the first to know when we launch.'
+          }</>
           )}
         </p>
       </div>

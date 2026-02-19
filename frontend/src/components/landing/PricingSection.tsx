@@ -1,7 +1,7 @@
 // src/components/landing/PricingSection.tsx
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +11,23 @@ import VehicleCapacity from './VehicleCapacity';
 
 export default function PricingSection() {
   const { isLoggedIn, loading } = useUser();
+  const [isFull, setIsFull] = useState(false);
+
+  useEffect(() => {
+    const checkCapacity = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        const res = await fetch(`${apiUrl}/public/vehicle-capacity`);
+        if (res.ok) {
+          const data = await res.json();
+          setIsFull(data.is_full === true);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    checkCapacity();
+  }, []);
 
   const features = [
     '2 connected devices',
@@ -25,37 +42,59 @@ export default function PricingSection() {
     <section className="relative z-20 -mt-100 max-w-3xl mx-auto px-6 py-10 text-center">
       <h2 className="text-2xl font-bold mb-6 text-white">Free for everyone</h2>
 
-      <Card className="border shadow-md bg-white">
-        <CardContent className="py-8 px-6 space-y-6">
-          <div>
-            <p className="text-3xl font-bold text-green-600">Free</p>
-            <p className="text-sm text-gray-500 mt-1">No credit card required</p>
+      <div className="relative">
+        {/* Full capacity overlay */}
+        {isFull && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm">
+            <div className="text-center px-6 py-8">
+              <p className="text-4xl mb-3">🚗</p>
+              <h3 className="text-2xl font-bold text-white mb-2">We&apos;re at full capacity</h3>
+              <p className="text-white/80 text-sm max-w-xs mx-auto">
+                All vehicle slots are currently taken. Check back soon or subscribe to our newsletter to be notified when spots open up.
+              </p>
+              <Button className="mt-4" variant="secondary" asChild>
+                <Link href="/contact">Get Notified</Link>
+              </Button>
+            </div>
           </div>
+        )}
 
-          <ul className="text-sm text-left text-gray-700 space-y-2 max-w-sm mx-auto">
-            {features.map((f) => (
-              <li key={f} className="flex items-start gap-2">
-                <span className="text-green-500 mt-0.5">&#10004;</span>
-                <span>{f}</span>
-              </li>
-            ))}
-          </ul>
+        <Card className={`border shadow-md bg-white ${isFull ? 'opacity-40' : ''}`}>
+          <CardContent className="py-8 px-6 space-y-6">
+            <div>
+              <p className="text-3xl font-bold text-green-600">Free</p>
+              <p className="text-sm text-gray-500 mt-1">No credit card required</p>
+            </div>
 
-          {loading ? (
-            <Button className="w-full max-w-xs mx-auto" disabled>
-              Loading...
-            </Button>
-          ) : isLoggedIn ? (
-            <Button className="w-full max-w-xs mx-auto" disabled>
-              You&apos;re signed in
-            </Button>
-          ) : (
-            <Button className="w-full max-w-xs mx-auto" asChild>
-              <Link href="/register">Get Started</Link>
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+            <ul className="text-sm text-left text-gray-700 space-y-2 max-w-sm mx-auto">
+              {features.map((f) => (
+                <li key={f} className="flex items-start gap-2">
+                  <span className="text-green-500 mt-0.5">&#10004;</span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+
+            {loading ? (
+              <Button className="w-full max-w-xs mx-auto" disabled>
+                Loading...
+              </Button>
+            ) : isLoggedIn ? (
+              <Button className="w-full max-w-xs mx-auto" disabled>
+                You&apos;re signed in
+              </Button>
+            ) : isFull ? (
+              <Button className="w-full max-w-xs mx-auto" disabled>
+                Currently Full
+              </Button>
+            ) : (
+              <Button className="w-full max-w-xs mx-auto" asChild>
+                <Link href="/register">Get Started</Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* News Box */}
       <div className="mt-6">

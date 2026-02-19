@@ -126,10 +126,13 @@ async def get_vehicle_capacity():
     # Calculate percentage
     percentage = round((current_count / max_limit) * 100, 1) if max_limit > 0 else 0
 
+    is_full = current_count >= max_limit
+
     return {
         "current": current_count,
         "max": max_limit,
-        "percentage": percentage
+        "percentage": percentage,
+        "is_full": is_full
     }
 
 @router.get("/public/status/webhook")
