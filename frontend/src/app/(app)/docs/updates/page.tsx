@@ -40,6 +40,7 @@ const releases: ReleaseNote[] = [
       'Fixed per-account webhook subscription check - secondary accounts now get auto-created subscriptions',
       'Fixed stale HA mismatch warning persisting after re-registering webhook',
       'Fixed admin users page showing no users when Enode user cache hits',
+      'Fixed admin vehicles page only showing one vehicle - now uses database cache instead of live Enode API calls',
     ],
   },
   {
