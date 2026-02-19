@@ -41,6 +41,7 @@ const releases: ReleaseNote[] = [
       'Fixed stale HA mismatch warning persisting after re-registering webhook',
       'Fixed admin users page showing no users when Enode user cache hits',
       'Fixed admin vehicles page only showing one vehicle - now uses database cache instead of live Enode API calls',
+      'Fixed vehicle polling only updating users with HA webhooks - now polls all users with linked vehicles so legacy HA endpoint users also get fresh data',
     ],
   },
   {
