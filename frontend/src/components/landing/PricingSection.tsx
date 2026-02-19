@@ -4,99 +4,58 @@
 import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { useUser } from '@/hooks/useUser';
-import { useTranslation } from 'react-i18next';
 import NewsBox from './NewsBox';
 import VehicleCapacity from './VehicleCapacity';
 
 export default function PricingSection() {
   const { isLoggedIn, loading } = useUser();
-  const { t } = useTranslation();
 
-  type PlanKey = 'free' | 'basic' | 'pro' | 'custom';
-  const plans: PlanKey[] = ['free', 'basic', 'pro', 'custom'];
-
-  // Plans that are shaded out (not available)
-  const shadedPlans: PlanKey[] = ['free', 'basic', 'custom'];
-
-  const planConfig: Record<PlanKey, {
-    title: string;
-    price: string;
-    features: readonly string[];
-    getButton: () => { label: string; href: string; disabled: boolean; badge: string | null };
-  }> = {
-    free: {
-      title: t('landing.pricing.plans.free.title'),
-      price: 'Not Available',
-      features: t('landing.pricing.plans.free.features', { returnObjects: true }) as string[],
-      getButton: () => ({ label: 'Not Available', href: '#', disabled: true, badge: null }),
-    },
-    basic: {
-      title: t('landing.pricing.plans.basic.title'),
-      price: 'Not Available',
-      features: t('landing.pricing.plans.basic.features', { returnObjects: true }) as string[],
-      getButton: () => ({ label: 'Not Available', href: '#', disabled: true, badge: null }),
-    },
-    pro: {
-      title: t('landing.pricing.plans.pro.title'),
-      price: 'Rolling 12 Month Free Access',
-      features: t('landing.pricing.plans.pro.features', { returnObjects: true }) as string[],
-      getButton: () => {
-        if (loading) {
-          return { label: t('landing.pricing.buttons.loading'), href: '#', disabled: true, badge: null };
-        }
-        if (!isLoggedIn) {
-          return { label: t('landing.pricing.buttons.register'), href: '/register?plan=pro', disabled: false, badge: 'Default' };
-        }
-        return { label: t('landing.pricing.buttons.currentPlan'), href: '#', disabled: true, badge: t('landing.pricing.badges.currentPlan') };
-      },
-    },
-    custom: {
-      title: t('landing.pricing.plans.custom.title'),
-      price: t('landing.pricing.plans.custom.price'),
-      features: t('landing.pricing.plans.custom.features', { returnObjects: true }) as string[],
-      getButton: () => ({ label: t('landing.pricing.buttons.contactUs'), href: '/contact', disabled: true, badge: t('landing.pricing.badges.comingSoon') }),
-    },
-  };
+  const features = [
+    '2 connected devices',
+    '10,000 API calls per month',
+    'Real-time webhook updates',
+    'Home Assistant integration',
+    'Charging session history',
+    'Community supported',
+  ];
 
   return (
-    <section className="relative z-20 -mt-100 max-w-6xl mx-auto px-6 py-10 text-center">
-      <h2 className="text-2xl font-bold mb-6 text-white">{t('landing.pricing.title')}</h2>
-      <div className="grid gap-4 md:grid-cols-4">
-        {plans.map((key) => {
-          const cfg = planConfig[key];
-          const btn = cfg.getButton();
-          const isShaded = shadedPlans.includes(key);
-          return (
-            <Card
-              key={key}
-              className={`relative border shadow-md bg-white ${isShaded ? 'bg-muted/50 opacity-50 grayscale' : ''} ${key === 'pro' ? 'ring-2 ring-green-500' : ''}`}
-            >
-              {btn.badge && (
-                <Badge variant="secondary" className="absolute top-2 right-2 z-10 text-xs">
-                  {btn.badge}
-                </Badge>
-              )}
-              <CardHeader className="pt-6">
-                <CardTitle className={`text-xl font-semibold uppercase ${btn.badge ? 'mt-1' : ''}`}>{cfg.title}</CardTitle>
-                <div className={`mt-2 text-lg font-bold ${key === 'pro' ? 'text-green-600' : 'text-gray-400'}`}>{cfg.price}</div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <ul className="text-sm text-left text-gray-700 space-y-1">
-                  {cfg.features.map((f) => (
-                    <li key={f}>✔ {f}</li>
-                  ))}
-                </ul>
-                <Button className="w-full" disabled={btn.disabled} asChild>
-                  <Link href={btn.href}>{btn.label}</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+    <section className="relative z-20 -mt-100 max-w-3xl mx-auto px-6 py-10 text-center">
+      <h2 className="text-2xl font-bold mb-6 text-white">Free for everyone</h2>
+
+      <Card className="border shadow-md bg-white">
+        <CardContent className="py-8 px-6 space-y-6">
+          <div>
+            <p className="text-3xl font-bold text-green-600">Free</p>
+            <p className="text-sm text-gray-500 mt-1">No credit card required</p>
+          </div>
+
+          <ul className="text-sm text-left text-gray-700 space-y-2 max-w-sm mx-auto">
+            {features.map((f) => (
+              <li key={f} className="flex items-start gap-2">
+                <span className="text-green-500 mt-0.5">&#10004;</span>
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+
+          {loading ? (
+            <Button className="w-full max-w-xs mx-auto" disabled>
+              Loading...
+            </Button>
+          ) : isLoggedIn ? (
+            <Button className="w-full max-w-xs mx-auto" disabled>
+              You&apos;re signed in
+            </Button>
+          ) : (
+            <Button className="w-full max-w-xs mx-auto" asChild>
+              <Link href="/register">Get Started</Link>
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       {/* News Box */}
       <div className="mt-6">
