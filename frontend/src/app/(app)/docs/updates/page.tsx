@@ -17,7 +17,7 @@ const releases: ReleaseNote[] = [
   {
     version: '2026.02.19',
     date: 'February 19, 2026',
-    highlights: 'Multi-Enode account support for scaling beyond single account vehicle limits',
+    highlights: 'Multi-Enode account support, Pay It Forward guide, simplified pricing, and capacity management',
     features: [
       'Multi-Enode account support - manage multiple Enode API accounts with separate credentials and vehicle limits',
       'Enode Accounts admin page - view, create, edit, and delete Enode accounts with capacity indicators',
@@ -25,11 +25,21 @@ const releases: ReleaseNote[] = [
       'Admin user reassignment - move users between Enode accounts via the admin panel',
       'Per-account credential testing from the admin UI',
       'Multi-secret webhook verification - incoming webhooks are verified against all active account secrets',
+      'Enode Account Share (PIF) guide - community members can share spare Enode capacity with EVConduit',
+      'Full capacity splash overlay - landing page shows "at full capacity" when vehicle limit is reached',
+      'Registration automatically blocked when vehicle capacity is full',
     ],
     improvements: [
+      'Simplified landing page - single free tier card replaces multi-plan pricing grid',
+      'Enode Accounts page title shows total registered vehicles across all accounts',
       'Vehicle and user admin tables now show which Enode account each entry belongs to',
       'Webhook health monitoring now operates across all Enode accounts',
       'All Enode API calls now route through the correct account credentials',
+    ],
+    fixes: [
+      'Fixed per-account webhook subscription check - secondary accounts now get auto-created subscriptions',
+      'Fixed stale HA mismatch warning persisting after re-registering webhook',
+      'Fixed admin users page showing no users when Enode user cache hits',
     ],
   },
   {
