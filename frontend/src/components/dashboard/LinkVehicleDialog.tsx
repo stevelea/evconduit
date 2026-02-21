@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,12 +19,35 @@ import { useAuth } from '@/hooks/useAuth';
 
 interface LinkVehicleDialogProps {
   accessToken: string;
+  hasEnodeAccount: boolean;
 }
 
-export default function LinkVehicleDialog({ accessToken }: LinkVehicleDialogProps) {
+export default function LinkVehicleDialog({ accessToken, hasEnodeAccount }: LinkVehicleDialogProps) {
   const [open, setOpen] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState('');
   const { isApproved } = useAuth();
+  const [capacityFull, setCapacityFull] = useState(false);
+
+  useEffect(() => {
+    if (hasEnodeAccount) return;
+
+    const checkCapacity = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        const res = await fetch(`${apiUrl}/public/vehicle-capacity`);
+        if (res.ok) {
+          const data = await res.json();
+          setCapacityFull(data.is_full === true);
+        }
+      } catch {
+        // Ignore errors, default to allowing
+      }
+    };
+
+    checkCapacity();
+  }, [hasEnodeAccount]);
+
+  const isDisabled = !isApproved || (!hasEnodeAccount && capacityFull);
 
   const handleLinkVehicle = async () => {
     if (!selectedVendor || !accessToken) {
@@ -55,9 +78,16 @@ export default function LinkVehicleDialog({ accessToken }: LinkVehicleDialogProp
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="default" disabled={!isApproved}>Link Vehicle</Button>
-      </DialogTrigger>
+      <div className="relative">
+        <DialogTrigger asChild>
+          <Button variant="default" disabled={isDisabled}>Link Vehicle</Button>
+        </DialogTrigger>
+        {isDisabled && !isApproved ? null : isDisabled && (
+          <p className="text-xs text-amber-600 mt-1">
+            Vehicle capacity is full. Join the Discord for updates.
+          </p>
+        )}
+      </div>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Link a new vehicle</DialogTitle>

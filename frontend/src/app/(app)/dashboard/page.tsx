@@ -17,7 +17,7 @@ import type { Vehicle } from "@/types/vehicle";
 
 export default function DashboardPage() {
   // Hooks i topp
-  const { user, accessToken, loading: authLoading } = useAuth();
+  const { user, mergedUser, accessToken, loading: authLoading } = useAuth();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false);
@@ -175,7 +175,7 @@ export default function DashboardPage() {
         </h1>
 
         <div className="flex flex-wrap gap-3">
-          <LinkVehicleDialog accessToken={accessToken} />
+          <LinkVehicleDialog accessToken={accessToken} hasEnodeAccount={!!mergedUser?.enode_account_id} />
           <Button
             variant="outline"
             onClick={handleRefresh}

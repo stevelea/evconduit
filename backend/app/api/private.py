@@ -82,7 +82,10 @@ async def get_user_vehicles(user=Depends(get_supabase_user)):
             logger.warning(f"[⚠️ cache] Failed to parse updated_at: {e}")
 
     try:
-        fresh_vehicles = await get_user_vehicles_enode(user_id)
+        account = await get_enode_account_for_user(user_id)
+        if not account:
+            raise HTTPException(status_code=500, detail="No Enode account assigned to user")
+        fresh_vehicles = await get_user_vehicles_enode(user_id, account)
         logger.info(f"🔄 Fetched {len(fresh_vehicles)} fresh vehicle(s) from Enode")
 
         for vehicle in fresh_vehicles:
@@ -194,6 +197,25 @@ async def api_create_link_session(
         # Auto-assign user to an Enode account if not already assigned
         account = await get_enode_account_for_user(user_id)
         if not account:
+            # Check global vehicle capacity before allowing new users to link
+            from app.storage.vehicle import get_total_vehicle_count
+            from app.storage.settings import get_setting_by_name
+
+            current_count = await get_total_vehicle_count()
+            setting = await get_setting_by_name("vehicle_limit.max_registrations")
+            max_limit = 100
+            if setting and setting.get("value"):
+                try:
+                    max_limit = int(setting.get("value"))
+                except (ValueError, TypeError):
+                    pass
+
+            if current_count >= max_limit:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Vehicle capacity is full. Join the Discord for updates."
+                )
+
             account = await get_best_account_for_new_user()
             if not account:
                 raise HTTPException(status_code=503, detail="No Enode account capacity available")
