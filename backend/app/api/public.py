@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr
 from app.enode.link import get_link_result
 from app.storage.enode_account import get_all_enode_accounts
 from app.storage.interest import assign_interest_user, get_interest_by_access_code, save_interest
+from app.storage.xcombo import list_approved_xcombo_scenes, submit_xcombo_scene
 from app.storage.status_logs import calculate_uptime, get_daily_status, get_status_panel_data
 from app.services.brevo import add_or_update_brevo_contact, remove_brevo_contact_from_list
 from app.storage.newsletter import create_newsletter_request, remove_public_subscriber, verify_newsletter_request
@@ -34,6 +35,15 @@ class PublicUnsubscribeRequest(BaseModel):
 class InterestSubmission(BaseModel):
     name: str
     email: EmailStr
+
+
+class XComboSubmission(BaseModel):
+    scene_id: str
+    name: str
+    xcombo_code: str | None = None
+    description: str | None = None
+    category: str | None = None
+    submitted_by: str | None = None
 
 
 @router.get("/status")
@@ -318,4 +328,38 @@ async def public_unsubscribe(request: PublicUnsubscribeRequest):
     except Exception as e:
         logger.error("❌ Unexpected error during unsubscribe for %s: %s", email, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal error during unsubscribe")
-    
+
+
+# -------------------------------------------------------------------
+# XCombo Scene Catalog
+# -------------------------------------------------------------------
+@router.get("/public/xcombo/scenes", summary="List approved XCombo scenes")
+async def get_xcombo_scenes():
+    """Returns all approved XCombo scenes for the public catalog."""
+    try:
+        scenes = list_approved_xcombo_scenes()
+        return scenes
+    except Exception as e:
+        logger.error(f"❌ Failed to list XCombo scenes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch scenes")
+
+
+@router.post("/public/xcombo/scenes", summary="Submit a new XCombo scene")
+async def post_xcombo_scene(data: XComboSubmission):
+    """Submits a new XCombo scene for moderation. Scenes start as pending."""
+    try:
+        scene = submit_xcombo_scene(
+            scene_id=data.scene_id,
+            name=data.name,
+            xcombo_code=data.xcombo_code,
+            description=data.description,
+            category=data.category,
+            submitted_by=data.submitted_by,
+        )
+        return {"message": "Scene submitted for review.", "scene": scene}
+    except Exception as e:
+        error_msg = str(e)
+        if "duplicate" in error_msg.lower() or "unique" in error_msg.lower():
+            raise HTTPException(status_code=409, detail="A scene with this ID already exists")
+        logger.error(f"❌ Failed to submit XCombo scene: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to submit scene")

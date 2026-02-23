@@ -66,6 +66,7 @@ export const navigation: NavigationGroup[] = [
       { title: 'Webhooks', href: '/admin/webhooks', icon: Network, adminOnly: true }, /* Hardcoded string */
       { title: 'Logs', href: '/admin/logs', icon: FileText, adminOnly: true }, /* Hardcoded string */
       { title: 'Finance', href: '/admin/finance', icon: BarChart2, adminOnly: true }, /* Hardcoded string */
+      { title: 'XCombo', href: '/admin/xcombo', icon: Zap, adminOnly: true },
     ],
   },
 ];

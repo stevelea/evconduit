@@ -12,6 +12,7 @@ from .finance import router as finance_router
 from .email import router as email_router
 from .metrics import router as metrics_router
 from .enode_accounts import router as enode_accounts_router
+from .xcombo import router as xcombo_router
 
 routers = [
     # admin_router,
@@ -26,4 +27,5 @@ routers = [
     email_router,
     metrics_router,
     enode_accounts_router,
+    xcombo_router,
 ]

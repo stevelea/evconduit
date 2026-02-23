@@ -14,6 +14,7 @@ import {
   Bell,
   Database,
   Server,
+  Zap,
 } from 'lucide-react';
 
 const adminLinks = [
@@ -27,6 +28,7 @@ const adminLinks = [
   { href: '/admin/news', label: 'News', icon: Newspaper },
   { href: '/admin/user-updates', label: 'Updates', icon: Bell },
   { href: '/admin/backups', label: 'Backups', icon: Database },
+  { href: '/admin/xcombo', label: 'XCombo', icon: Zap },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
