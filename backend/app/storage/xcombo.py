@@ -55,6 +55,21 @@ def update_xcombo_scene_status(scene_id: str, status: str) -> dict:
     return response.data[0] if response.data else {}
 
 
+def update_xcombo_scene(scene_id: str, fields: dict) -> dict:
+    """Update editable fields of an XCombo scene."""
+    allowed = {"name", "xcombo_code", "description", "category", "submitted_by"}
+    payload = {k: v for k, v in fields.items() if k in allowed}
+    if not payload:
+        return {}
+    response = (
+        supabase.table("xcombo_scenes")
+        .update(payload)
+        .eq("id", scene_id)
+        .execute()
+    )
+    return response.data[0] if response.data else {}
+
+
 def delete_xcombo_scene(scene_id: str) -> None:
     """Delete an XCombo scene."""
     supabase.table("xcombo_scenes").delete().eq("id", scene_id).execute()

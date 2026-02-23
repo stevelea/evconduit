@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Loader2, Check, X, Trash2, ExternalLink } from 'lucide-react';
+import { Loader2, Check, X, Trash2, ExternalLink, Pencil, Save } from 'lucide-react';
 import { authFetch } from '@/lib/authFetch';
 
 type XComboEntry = {
@@ -25,6 +26,9 @@ export default function AdminXComboPage() {
   const [entries, setEntries] = useState<XComboEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<string>('all');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editFields, setEditFields] = useState<Partial<XComboEntry>>({});
+  const [saving, setSaving] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     if (!accessToken) return;
@@ -43,6 +47,45 @@ export default function AdminXComboPage() {
   useEffect(() => {
     if (user) fetchEntries();
   }, [user, fetchEntries]);
+
+  const categories = [...new Set(entries.map(e => e.category).filter(Boolean))] as string[];
+
+  const startEdit = (entry: XComboEntry) => {
+    setEditingId(entry.id);
+    setEditFields({
+      name: entry.name,
+      xcombo_code: entry.xcombo_code,
+      description: entry.description,
+      category: entry.category,
+      submitted_by: entry.submitted_by,
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditFields({});
+  };
+
+  const saveEdit = async () => {
+    if (!accessToken || !editingId) return;
+    setSaving(true);
+
+    const res = await authFetch(`/admin/xcombo/scenes/${editingId}`, {
+      method: 'PATCH',
+      accessToken,
+      body: JSON.stringify(editFields),
+    });
+
+    if (res.error) {
+      toast.error('Failed to save changes');
+    } else {
+      toast.success('Scene updated');
+      setEditingId(null);
+      setEditFields({});
+      await fetchEntries();
+    }
+    setSaving(false);
+  };
 
   const handleStatusChange = async (id: string, status: string) => {
     if (!accessToken) return;
@@ -139,61 +182,163 @@ export default function AdminXComboPage() {
             <tbody>
               {filtered.map((entry) => (
                 <tr key={entry.id} className="border-t hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium">{entry.name}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-gray-500">
-                    {entry.xcombo_code || '—'}
-                  </td>
-                  <td className="px-4 py-2">{entry.category || '—'}</td>
-                  <td className="px-4 py-2 max-w-xs truncate text-gray-600">
-                    {entry.description || '—'}
-                  </td>
-                  <td className="px-4 py-2">{entry.submitted_by || '—'}</td>
-                  <td className="px-4 py-2">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      entry.status === 'approved'
-                        ? 'bg-green-100 text-green-800'
-                        : entry.status === 'rejected'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {entry.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-gray-500 whitespace-nowrap">
-                    {format(new Date(entry.created_at), 'yyyy-MM-dd HH:mm')}
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex items-center gap-1">
-                      {entry.status !== 'approved' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleStatusChange(entry.id, 'approved')}
-                          title="Approve"
+                  {editingId === entry.id ? (
+                    <>
+                      <td className="px-4 py-2">
+                        <Input
+                          value={editFields.name || ''}
+                          onChange={(e) => setEditFields(f => ({ ...f, name: e.target.value }))}
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <Input
+                          value={editFields.xcombo_code || ''}
+                          onChange={(e) => setEditFields(f => ({ ...f, xcombo_code: e.target.value }))}
+                          className="h-8 text-sm font-mono w-24"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <select
+                          value={editFields.category || ''}
+                          onChange={(e) => {
+                            if (e.target.value === '__new__') {
+                              const newCat = prompt('Enter new category name:');
+                              if (newCat) setEditFields(f => ({ ...f, category: newCat }));
+                            } else {
+                              setEditFields(f => ({ ...f, category: e.target.value || null }));
+                            }
+                          }}
+                          className="h-8 rounded-md border border-gray-300 text-sm px-2 w-full"
                         >
-                          <Check className="h-4 w-4 text-green-600" />
-                        </Button>
-                      )}
-                      {entry.status !== 'rejected' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleStatusChange(entry.id, 'rejected')}
-                          title="Reject"
-                        >
-                          <X className="h-4 w-4 text-red-600" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(entry.id, entry.name)}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4 text-gray-400" />
-                      </Button>
-                    </div>
-                  </td>
+                          <option value="">None</option>
+                          {categories.map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                          <option value="__new__">+ New category</option>
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <Input
+                          value={editFields.description || ''}
+                          onChange={(e) => setEditFields(f => ({ ...f, description: e.target.value }))}
+                          className="h-8 text-sm"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <Input
+                          value={editFields.submitted_by || ''}
+                          onChange={(e) => setEditFields(f => ({ ...f, submitted_by: e.target.value }))}
+                          className="h-8 text-sm w-24"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          entry.status === 'approved'
+                            ? 'bg-green-100 text-green-800'
+                            : entry.status === 'rejected'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {entry.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 whitespace-nowrap">
+                        {format(new Date(entry.created_at), 'yyyy-MM-dd HH:mm')}
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={saveEdit}
+                            disabled={saving}
+                            title="Save"
+                          >
+                            {saving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4 text-green-600" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={cancelEdit}
+                            title="Cancel"
+                          >
+                            <X className="h-4 w-4 text-gray-400" />
+                          </Button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-4 py-2 font-medium">{entry.name}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-gray-500">
+                        {entry.xcombo_code || '—'}
+                      </td>
+                      <td className="px-4 py-2">{entry.category || '—'}</td>
+                      <td className="px-4 py-2 max-w-xs truncate text-gray-600">
+                        {entry.description || '—'}
+                      </td>
+                      <td className="px-4 py-2">{entry.submitted_by || '—'}</td>
+                      <td className="px-4 py-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          entry.status === 'approved'
+                            ? 'bg-green-100 text-green-800'
+                            : entry.status === 'rejected'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {entry.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 whitespace-nowrap">
+                        {format(new Date(entry.created_at), 'yyyy-MM-dd HH:mm')}
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEdit(entry)}
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4 text-blue-500" />
+                          </Button>
+                          {entry.status !== 'approved' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleStatusChange(entry.id, 'approved')}
+                              title="Approve"
+                            >
+                              <Check className="h-4 w-4 text-green-600" />
+                            </Button>
+                          )}
+                          {entry.status !== 'rejected' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleStatusChange(entry.id, 'rejected')}
+                              title="Reject"
+                            >
+                              <X className="h-4 w-4 text-red-600" />
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(entry.id, entry.name)}
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4 text-gray-400" />
+                          </Button>
+                        </div>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>

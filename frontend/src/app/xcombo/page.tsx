@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight } from 'lucide-react';
+import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight, Languages } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://backend.evconduit.com/api';
 
@@ -33,6 +33,124 @@ function extractSceneId(text: string) {
 function formatSceneCode(code: string) {
   const digits = code.replace(/\s/g, '');
   return digits.length === 8 ? `${digits.slice(0, 4)} ${digits.slice(4)}` : code;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function inferCategory(data: any): string {
+  const tecPoints: string[] = [];
+  function collectTecPoints(action: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (action?.actionType === 'atom') {
+      const tp = action.execution?.tecPoint || '';
+      if (tp) tecPoints.push(tp.toLowerCase());
+    }
+    for (const a of action?.actions || []) collectTecPoints(a);
+  }
+  collectTecPoints(data.action || {});
+
+  const triggerTecPoints: string[] = [];
+  function collectTriggers(cond: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const tp = cond?.left?.resource?.tecPoint || '';
+    if (tp) triggerTecPoints.push(tp.toLowerCase());
+    for (const c of cond?.conditions || []) collectTriggers(c);
+  }
+  collectTriggers(data.condition || {});
+
+  const all = [...tecPoints, ...triggerTecPoints].join(' ');
+
+  if (all.match(/guard|sentry|carguard/)) return 'Security';
+  if (all.match(/window|door|lock|mirror|child.*safe|rear.*view/)) return 'Convenience';
+  if (all.match(/hvac|circulation|climate|temperature|seat.*heat|ac\b/)) return 'Climate';
+  if (all.match(/light|lamp|ambient/)) return 'Lighting';
+  if (all.match(/volume|media|sound|voice|announcement/)) return 'Media';
+  if (all.match(/charge|battery/)) return 'Charging';
+  if (all.match(/pilot|driving|cruise|park/)) return 'Driving';
+
+  return '';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildDescription(data: any): string {
+  const triggers = extractTriggers(data.condition || {});
+  const actions = extractActions(data.action || {});
+  if (!triggers.length && !actions.length) return '';
+
+  // Summarize actions into deduplicated short labels
+  const actionSummaries: string[] = [];
+  for (const a of actions) {
+    // Extract the key part: "Window Switch: Driver -> All close" => "close windows"
+    // "All door locks: Lock" => "lock doors"
+    // "Side Mirror: Side Mirror -> Fold" => "fold mirrors"
+    // Keep it simple: use the parent name + display if available
+    const parts = a.split(':');
+    const parent = parts[0].trim().toLowerCase();
+    const rest = parts.slice(1).join(':').trim();
+    const display = rest.includes('\u2192') ? rest.split('\u2192')[1].trim().toLowerCase() : rest.toLowerCase();
+
+    let summary = '';
+    if (parent.includes('window switch') || parent.includes('window lock')) {
+      if (display.includes('close') || display.includes('lock')) summary = 'close windows';
+      else if (display.includes('open')) summary = 'open windows';
+      else summary = 'adjust windows';
+    } else if (parent.includes('door lock') || parent === 'all door locks') {
+      summary = display.includes('unlock') ? 'unlock doors' : 'lock doors';
+    } else if (parent.includes('child lock')) {
+      summary = 'enable child locks';
+    } else if (parent.includes('mirror') || parent.includes('side mirror')) {
+      summary = display.includes('fold') ? 'fold mirrors' : 'adjust mirrors';
+    } else if (parent.includes('circulation') || parent.includes('hvac')) {
+      summary = 'set air circulation';
+    } else if (parent.includes('sentry') || parent.includes('guard')) {
+      summary = display.includes('off') ? 'disable sentry mode' : 'enable sentry mode';
+    } else if (parent.includes('volume')) {
+      summary = `set volume to ${display}`.replace('media volume ', 'level ');
+    } else if (parent.includes('announcement')) {
+      summary = 'play announcement';
+    } else if (parent.includes('light') || parent.includes('lamp')) {
+      summary = 'adjust lights';
+    } else if (parent.includes('climate') || parent.includes('temperature') || parent.includes('seat')) {
+      summary = 'adjust climate';
+    } else {
+      // Fallback: use parent name
+      summary = parent;
+    }
+    if (summary && !actionSummaries.includes(summary)) {
+      actionSummaries.push(summary);
+    }
+  }
+
+  // Summarize triggers
+  const triggerText = triggers.length === 1
+    ? triggers[0]
+    : triggers.slice(0, 3).join(', ') + (triggers.length > 3 ? '...' : '');
+
+  const actionText = actionSummaries.join(', ');
+
+  if (triggerText.toLowerCase().includes('tapping the run button')) {
+    return actionText ? `When triggered: ${actionText}.` : '';
+  }
+
+  if (!actionText) return `Triggered by: ${triggerText}.`;
+
+  return `When ${triggerText.toLowerCase()}: ${actionText}.`;
+}
+
+async function translateToEnglish(text: string): Promise<string> {
+  if (!text.trim()) return text;
+  try {
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|en`
+    );
+    if (res.ok) {
+      const json = await res.json();
+      const translated = json.responseData?.translatedText;
+      if (translated && translated.toLowerCase() !== text.toLowerCase()) {
+        return translated;
+      }
+    }
+  } catch {
+    // Fall back to original
+  }
+  return text;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,7 +210,10 @@ export default function XComboPage() {
   const [xcomboCode, setXcomboCode] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
+  const [isNewCategory, setIsNewCategory] = useState(false);
   const [submittedBy, setSubmittedBy] = useState('');
+  const [autoTranslate, setAutoTranslate] = useState(false);
+  const [translating, setTranslating] = useState(false);
 
   useEffect(() => {
     fetchScenes();
@@ -127,9 +248,35 @@ export default function XComboPage() {
         const json = await res.json();
         if (json.code === 200 && json.data) {
           const d = json.data;
-          setName(d.name || '');
-          setDescription(d.description || '');
+          const sceneName = d.name || '';
           if (d.sceneCode) setXcomboCode(formatSceneCode(d.sceneCode));
+
+          setName(sceneName);
+
+          // Auto-generate description from triggers/actions
+          const generatedDesc = buildDescription(json.data);
+          setDescription(generatedDesc || d.description || '');
+
+          // Auto-detect category from action/trigger data
+          const inferred = inferCategory(json.data);
+          if (inferred) {
+            const existingMatch = categories.find(c => c.toLowerCase() === inferred.toLowerCase());
+            setCategory(existingMatch || inferred);
+            setIsNewCategory(!existingMatch && !categories.includes(inferred));
+          }
+          setFetching(false);
+
+          // Auto-translate name to English (description is already generated in English)
+          if (autoTranslate && sceneName) {
+            setTranslating(true);
+            try {
+              const tName = await translateToEnglish(sceneName);
+              setName(tName);
+            } finally {
+              setTranslating(false);
+            }
+          }
+          return;
         }
       }
     } catch {
@@ -211,6 +358,7 @@ export default function XComboPage() {
       setXcomboCode('');
       setDescription('');
       setCategory('');
+      setIsNewCategory(false);
       setSubmittedBy('');
     } catch {
       setSubmitMessage('Failed to submit. Please try again.');
@@ -278,13 +426,33 @@ export default function XComboPage() {
                       <Loader2 className="h-3 w-3 animate-spin" /> Fetching scene details...
                     </p>
                   )}
-                  {parsedSceneId && !fetching && (
-                    <p className="text-xs text-[#7dd96e]">Scene details loaded</p>
+                  {translating && (
+                    <p className="text-xs text-gray-400 flex items-center gap-1">
+                      <Languages className="h-3 w-3" /><Loader2 className="h-3 w-3 animate-spin" /> Translating to English...
+                    </p>
+                  )}
+                  {parsedSceneId && !fetching && !translating && (
+                    <p className="text-xs text-[#7dd96e]">Scene details loaded{autoTranslate ? ' & translated' : ''}</p>
                   )}
                   {shareLink && !parsedSceneId && !fetching && (
                     <p className="text-xs text-red-400">No valid link found — make sure the full text is pasted</p>
                   )}
                 </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={autoTranslate}
+                      onChange={(e) => setAutoTranslate(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 rounded-full bg-gray-600 peer-checked:bg-[#7dd96e] transition-colors" />
+                    <div className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform peer-checked:translate-x-4" />
+                  </div>
+                  <span className="text-sm text-gray-300 flex items-center gap-1.5">
+                    <Languages className="h-3.5 w-3.5" /> Translate to English
+                  </span>
+                </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-300">Name *</label>
@@ -307,12 +475,45 @@ export default function XComboPage() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-300">Category</label>
-                    <Input
-                      placeholder="e.g. Security, Convenience"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      className="bg-[#1a1a1a] border-gray-600 text-white placeholder:text-gray-500"
-                    />
+                    {!isNewCategory ? (
+                      <select
+                        value={category}
+                        onChange={(e) => {
+                          if (e.target.value === '__new__') {
+                            setIsNewCategory(true);
+                            setCategory('');
+                          } else {
+                            setCategory(e.target.value);
+                          }
+                        }}
+                        className="w-full h-9 rounded-md bg-[#1a1a1a] border border-gray-600 text-white px-3 py-1 text-sm"
+                      >
+                        <option value="">No category</option>
+                        {categories.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                        <option value="__new__">+ New category</option>
+                      </select>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="New category name"
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          autoFocus
+                          className="bg-[#1a1a1a] border-gray-600 text-white placeholder:text-gray-500"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setIsNewCategory(false); setCategory(''); }}
+                          className="text-gray-400 hover:text-white px-2"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-gray-300">Your Name</label>

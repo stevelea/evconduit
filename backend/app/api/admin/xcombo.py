@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from app.auth.supabase_auth import get_supabase_user
-from app.storage.xcombo import list_all_xcombo_scenes, update_xcombo_scene_status, delete_xcombo_scene
+from app.storage.xcombo import list_all_xcombo_scenes, update_xcombo_scene_status, update_xcombo_scene, delete_xcombo_scene
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,17 @@ async def update_scene_status(scene_id: str, request: Request, user=Depends(requ
         raise HTTPException(status_code=404, detail="Scene not found")
 
     logger.info(f"XCombo scene {scene_id} updated to {status} by admin {user.get('sub')}")
+    return result
+
+
+@router.patch("/admin/xcombo/scenes/{scene_id}")
+async def update_scene(scene_id: str, request: Request, user=Depends(require_admin)):
+    """Update editable fields of an XCombo scene."""
+    data = await request.json()
+    result = update_xcombo_scene(scene_id, data)
+    if not result:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    logger.info(f"XCombo scene {scene_id} updated by admin {user.get('sub')}: {list(data.keys())}")
     return result
 
 
