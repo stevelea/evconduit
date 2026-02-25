@@ -156,8 +156,22 @@ async function translateToEnglish(text: string): Promise<string> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function extractTriggers(cond: any): string[] {
   const triggers: string[] = [];
-  if (cond?.left?.name) {
-    triggers.push(cond.left.name);
+  if (cond?.left) {
+    // Build full trigger: "Category: Specific → Condition"
+    // e.g. "Enter/Exit Vehicle: Driver Exit" or "Door: Driver → Closed"
+    const category = cond.name || '';
+    const specific = cond.left.name || cond.left.resource?.name || '';
+    const rightVal = cond.right?.name || '';
+
+    let label = '';
+    if (category && specific && category !== specific) {
+      label = `${category}: ${specific}`;
+    } else {
+      label = specific || category;
+    }
+    if (rightVal) label += ` \u2192 ${rightVal}`;
+
+    if (label) triggers.push(label);
   }
   if (cond?.conditions) {
     for (const c of cond.conditions) {

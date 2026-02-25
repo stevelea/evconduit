@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Loader2, Check, X, Trash2, ExternalLink, Pencil, Save } from 'lucide-react';
+import { Loader2, Check, X, Trash2, ExternalLink, Pencil, Save, RefreshCw } from 'lucide-react';
 import { authFetch } from '@/lib/authFetch';
 
 type XComboEntry = {
@@ -29,6 +29,7 @@ export default function AdminXComboPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Partial<XComboEntry>>({});
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchEntries = useCallback(async () => {
     if (!accessToken) return;
@@ -121,6 +122,23 @@ export default function AdminXComboPage() {
     }
   };
 
+  const handleRefresh = async () => {
+    if (!accessToken) return;
+    setRefreshing(true);
+    const res = await authFetch('/admin/xcombo/refresh', {
+      method: 'POST',
+      accessToken,
+    });
+    if (res.error) {
+      toast.error('Failed to refresh scenes');
+    } else {
+      const { updated, errors, total } = res.data;
+      toast.success(`Refreshed ${updated}/${total} scenes${errors ? ` (${errors} errors)` : ''}`);
+      await fetchEntries();
+    }
+    setRefreshing(false);
+  };
+
   const filtered = filter === 'all' ? entries : entries.filter(e => e.status === filter);
   const counts = {
     all: entries.length,
@@ -133,14 +151,29 @@ export default function AdminXComboPage() {
     <main className="p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-indigo-900">XCombo Scenes</h1>
-        <a
-          href="/xcombo"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-indigo-600 hover:underline flex items-center gap-1"
-        >
-          View public catalog <ExternalLink className="h-3 w-3" />
-        </a>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-1.5" />
+            )}
+            Refresh All
+          </Button>
+          <a
+            href="/xcombo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-indigo-600 hover:underline flex items-center gap-1"
+          >
+            View public catalog <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
       </div>
 
       {/* Status filter tabs */}
