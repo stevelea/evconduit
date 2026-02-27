@@ -164,8 +164,9 @@ async def get_vehicle_status_legacy(vehicle_id: str, user: User = Depends(get_ap
     odometer = cache.get("odometer", {})
     vendor = cache.get("vendor")
     smart_charging_policy = cache.get("smartChargingPolicy", {})
+    abrp_extra = cache.get("abrp_extra", {})
 
-    return {
+    result = {
         # legacy keys (to be removed later)
         "batteryLevel": charge.get("batteryLevel"),
         "range": charge.get("range"),
@@ -187,6 +188,11 @@ async def get_vehicle_status_legacy(vehicle_id: str, user: User = Depends(get_ap
         "vendor": vendor,
         "smartChargingPolicy": smart_charging_policy,
     }
+
+    if abrp_extra:
+        result["abrp_extra"] = abrp_extra
+
+    return result
 
 @router.get("/ha/vehicles",)
 async def get_vehicles(user: User = Depends(get_api_key_user)):
