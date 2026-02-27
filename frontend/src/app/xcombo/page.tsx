@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight, Languages, Copy } from 'lucide-react';
+import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight, Languages, Copy, Download } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://backend.evconduit.com/api';
 
@@ -15,6 +15,7 @@ type XComboScene = {
   description: string | null;
   category: string | null;
   submitted_by: string | null;
+  install_count: number;
   created_at: string;
 };
 
@@ -383,6 +384,8 @@ export default function XComboPage() {
   }
 
   function openScene(id: string) {
+    // Track the install (fire-and-forget)
+    fetch(`${API_BASE}/public/xcombo/scenes/${id}/install`, { method: 'POST' }).catch(() => {});
     window.location.href = `https://private-eur.xpeng.com/poster.html?sceneId=${id}&innerJump=xiaopeng://common/car/xcombo/editor?sceneId=${id}`;
   }
 
@@ -402,6 +405,20 @@ export default function XComboPage() {
             Browse and share XPeng XCombo automations. Tap a card on your phone to open it in the XPeng app.
           </p>
         </div>
+
+        {/* Stats */}
+        {!loading && scenes.length > 0 && (
+          <div className="flex justify-center gap-6 text-sm text-gray-400">
+            <div className="flex items-center gap-1.5">
+              <Zap className="h-4 w-4 text-[#7dd96e]" />
+              <span><span className="text-white font-medium">{scenes.length}</span> xCombos</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Download className="h-4 w-4 text-[#7dd96e]" />
+              <span><span className="text-white font-medium">{scenes.reduce((sum, s) => sum + (s.install_count || 0), 0)}</span> installs</span>
+            </div>
+          </div>
+        )}
 
         {/* Submit toggle */}
         <div className="flex justify-center">
@@ -657,6 +674,11 @@ export default function XComboPage() {
                       {scene.xcombo_code && (
                         <span className="text-xs font-mono text-gray-500">
                           {scene.xcombo_code}
+                        </span>
+                      )}
+                      {scene.install_count > 0 && (
+                        <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                          <Download className="h-3 w-3" /> {scene.install_count}
                         </span>
                       )}
                     </div>

@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr
 from app.enode.link import get_link_result
 from app.storage.enode_account import get_all_enode_accounts
 from app.storage.interest import assign_interest_user, get_interest_by_access_code, save_interest
-from app.storage.xcombo import list_approved_xcombo_scenes, submit_xcombo_scene
+from app.storage.xcombo import list_approved_xcombo_scenes, submit_xcombo_scene, increment_xcombo_install
 from app.storage.useful_links import list_active_useful_links
 from app.storage.status_logs import calculate_uptime, get_daily_status, get_status_panel_data
 from app.services.brevo import add_or_update_brevo_contact, remove_brevo_contact_from_list
@@ -377,3 +377,14 @@ async def post_xcombo_scene(data: XComboSubmission):
             raise HTTPException(status_code=409, detail="A scene with this ID already exists")
         logger.error(f"❌ Failed to submit XCombo scene: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to submit scene")
+
+
+@router.post("/public/xcombo/scenes/{scene_id}/install", summary="Track XCombo install")
+async def track_xcombo_install(scene_id: str):
+    """Increments the install counter when a user taps to open an XCombo."""
+    try:
+        increment_xcombo_install(scene_id)
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"❌ Failed to track XCombo install: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to track install")

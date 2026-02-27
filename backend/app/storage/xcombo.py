@@ -25,7 +25,7 @@ def list_approved_xcombo_scenes() -> list[dict]:
     """List all approved XCombo scenes, newest first."""
     response = (
         supabase.table("xcombo_scenes")
-        .select("scene_id, xcombo_code, name, description, category, submitted_by, created_at")
+        .select("scene_id, xcombo_code, name, description, category, submitted_by, install_count, created_at")
         .eq("status", "approved")
         .order("created_at", desc=True)
         .execute()
@@ -73,3 +73,17 @@ def update_xcombo_scene(scene_id: str, fields: dict) -> dict:
 def delete_xcombo_scene(scene_id: str) -> None:
     """Delete an XCombo scene."""
     supabase.table("xcombo_scenes").delete().eq("id", scene_id).execute()
+
+
+def increment_xcombo_install(scene_id: str) -> None:
+    """Increment the install count for an XCombo scene by scene_id."""
+    response = (
+        supabase.table("xcombo_scenes")
+        .select("install_count")
+        .eq("scene_id", scene_id)
+        .eq("status", "approved")
+        .execute()
+    )
+    if response.data:
+        current = response.data[0].get("install_count", 0)
+        supabase.table("xcombo_scenes").update({"install_count": current + 1}).eq("scene_id", scene_id).execute()

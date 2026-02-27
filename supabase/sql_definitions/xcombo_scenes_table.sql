@@ -1,4 +1,4 @@
--- XCombo Scenes table for community XPeng XCombo scene catalog
+-- XCombo Scenes table for community XPeng XCombo scene catalogue
 CREATE TABLE IF NOT EXISTS xcombo_scenes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     scene_id TEXT UNIQUE NOT NULL,
@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS xcombo_scenes (
     category TEXT,
     submitted_by TEXT,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    install_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
