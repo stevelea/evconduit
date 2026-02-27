@@ -345,11 +345,11 @@ async def get_useful_links():
 
 
 # -------------------------------------------------------------------
-# XCombo Scene Catalog
+# XCombo Scene Catalogue
 # -------------------------------------------------------------------
 @router.get("/public/xcombo/scenes", summary="List approved XCombo scenes")
 async def get_xcombo_scenes():
-    """Returns all approved XCombo scenes for the public catalog."""
+    """Returns all approved XCombo scenes for the public catalogue."""
     try:
         scenes = list_approved_xcombo_scenes()
         return scenes

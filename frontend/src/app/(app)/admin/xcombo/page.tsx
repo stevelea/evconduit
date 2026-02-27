@@ -171,7 +171,7 @@ export default function AdminXComboPage() {
             rel="noopener noreferrer"
             className="text-sm text-indigo-600 hover:underline flex items-center gap-1"
           >
-            View public catalog <ExternalLink className="h-3 w-3" />
+            View public catalogue <ExternalLink className="h-3 w-3" />
           </a>
         </div>
       </div>

@@ -396,7 +396,7 @@ export default function XComboPage() {
         <div className="text-center space-y-3">
           <div className="flex items-center justify-center gap-2">
             <Zap className="h-8 w-8 text-[#7dd96e]" />
-            <h1 className="text-3xl font-bold">XCombo Catalog</h1>
+            <h1 className="text-3xl font-bold">XCombo Catalogue</h1>
           </div>
           <p className="text-gray-400">
             Browse and share XPeng XCombo automations. Tap a card on your phone to open it in the XPeng app.
