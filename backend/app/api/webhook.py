@@ -312,6 +312,19 @@ async def push_to_homeassistant(event: dict, user_id: str | None):
             ha_event["vehicleId"] = internal_id
             vehicle["id"] = internal_id  # Replace Enode ID with internal ID
             logger.info("HA push: Mapped Enode ID %s to internal ID %s", enode_vehicle_id, internal_id)
+
+            # Enrich with abrp_extra from the DB cache (added by cross-populate)
+            try:
+                db_cache_str = db_vehicle.get("vehicle_cache")
+                if db_cache_str:
+                    import json
+                    db_cache = json.loads(db_cache_str) if isinstance(db_cache_str, str) else db_cache_str
+                    abrp_extra = db_cache.get("abrp_extra")
+                    if abrp_extra:
+                        vehicle["abrp_extra"] = abrp_extra
+                        logger.info("HA push: Enriched event with abrp_extra for user %s", user_id)
+            except Exception as e:
+                logger.warning("HA push: Failed to enrich with abrp_extra: %s", e)
         else:
             logger.warning("HA push: Could not find DB vehicle for Enode ID %s", enode_vehicle_id)
 
