@@ -210,6 +210,11 @@ async def save_vehicle_data_with_client(vehicle: dict):
 
         logger.info(f"✅ Vehicle {vehicle_id} saved for user {user_id}")
 
+        # Cross-populate data between Enode and ABRP if both exist for same car
+        brand = vehicle.get("information", {}).get("brand") or vendor or ""
+        if brand:
+            await cross_populate_vehicle_data(user_id, "enode", brand.upper())
+
         # Cache the current online status for next webhook (TTL: 1 hour)
         _set_cached(cache_key, online, ttl_seconds=3600)
 
@@ -242,6 +247,174 @@ async def save_vehicle_data_with_client(vehicle: dict):
     except Exception as e:
         logger.error(f"[❌ save_vehicle_data_with_client] Exception: {e}")
         return False
+
+
+async def save_abrp_vehicle(vehicle_cache: dict, user_id: str, abrp_vehicle_id: str) -> bool:
+    """
+    Upsert an ABRP-sourced vehicle into the vehicles table.
+    Matches on (user_id, vehicle_id) where vehicle_id is the ABRP vehicle ID.
+    """
+    supabase = get_supabase_admin_client()
+    try:
+        data_str = json.dumps(vehicle_cache)
+        updated_at = datetime.utcnow().isoformat()
+
+        # Extract brand info for vendor field
+        vendor = vehicle_cache.get("vendor", "abrp")
+
+        payload = {
+            "vehicle_id": abrp_vehicle_id,
+            "user_id": user_id,
+            "vendor": vendor,
+            "online": True,
+            "vehicle_cache": data_str,
+            "updated_at": updated_at,
+            "source": "abrp",
+        }
+
+        res = supabase.table("vehicles").upsert(
+            payload, on_conflict=["vehicle_id"]
+        ).execute()
+
+        if not getattr(res, "data", None):
+            logger.warning(f"⚠️ save_abrp_vehicle: No data returned")
+            return False
+
+        logger.info(f"✅ ABRP vehicle {abrp_vehicle_id} saved for user {user_id}")
+
+        # Cross-populate data between ABRP and Enode if both exist for same car
+        brand = vehicle_cache.get("information", {}).get("brand") or vendor or ""
+        if brand:
+            await cross_populate_vehicle_data(user_id, "abrp", brand.upper())
+
+        return True
+    except Exception as e:
+        logger.error(f"[❌ save_abrp_vehicle] {e}")
+        return False
+
+
+async def cross_populate_vehicle_data(user_id: str, saved_source: str, saved_brand: str) -> None:
+    """
+    After saving a vehicle, find the counterpart from the other source (Enode ↔ ABRP)
+    for the same physical car and merge missing data in both directions.
+
+    Matching: same user_id + same brand (case-insensitive).
+    - ABRP → Enode: abrp_extra, odometer (if missing), batteryCapacity, range
+    - Enode → ABRP: VIN, chargeLimit, maxCurrent, powerDeliveryState, capabilities
+    """
+    supabase = get_supabase_admin_client()
+    try:
+        # Fetch all vehicles for this user to find cross-source match
+        res = supabase.table("vehicles").select(
+            "id, vehicle_id, source, vendor, vin, vehicle_cache"
+        ).eq("user_id", user_id).execute()
+
+        vehicles = res.data or []
+        if len(vehicles) < 2:
+            return  # Need at least 2 vehicles to cross-populate
+
+        # Group by normalised brand
+        enode_vehicles = []
+        abrp_vehicles = []
+        for v in vehicles:
+            source = v.get("source") or "enode"
+            cache = v.get("vehicle_cache")
+            if isinstance(cache, str):
+                try:
+                    cache = json.loads(cache)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+            if not cache:
+                continue
+            v["_cache"] = cache
+            brand = (cache.get("information", {}).get("brand") or v.get("vendor") or "").upper()
+            v["_brand"] = brand
+            if source == "abrp":
+                abrp_vehicles.append(v)
+            else:
+                enode_vehicles.append(v)
+
+        if not enode_vehicles or not abrp_vehicles:
+            return  # No cross-source pair
+
+        # Match by brand (case-insensitive)
+        for enode_v in enode_vehicles:
+            for abrp_v in abrp_vehicles:
+                if enode_v["_brand"] != abrp_v["_brand"]:
+                    continue
+
+                enode_cache = enode_v["_cache"]
+                abrp_cache = abrp_v["_cache"]
+                enode_updated = False
+                abrp_updated = False
+
+                # ── ABRP → Enode: augment Enode with ABRP-only data ──
+                abrp_extra = abrp_cache.get("abrp_extra")
+                if abrp_extra:
+                    enode_cache["abrp_extra"] = abrp_extra
+                    enode_updated = True
+
+                # Odometer: prefer ABRP if Enode has no valid distance
+                enode_odo = enode_cache.get("odometer") or {}
+                abrp_odo = abrp_cache.get("odometer") or {}
+                if not enode_odo.get("distance") and abrp_odo.get("distance"):
+                    enode_cache["odometer"] = abrp_odo
+                    enode_updated = True
+
+                # batteryCapacity / range from ABRP if Enode missing
+                enode_cs = enode_cache.get("chargeState", {})
+                abrp_cs = abrp_cache.get("chargeState", {})
+                if enode_cs.get("batteryCapacity") is None and abrp_cs.get("batteryCapacity") is not None:
+                    enode_cs["batteryCapacity"] = abrp_cs["batteryCapacity"]
+                    enode_cache["chargeState"] = enode_cs
+                    enode_updated = True
+                if enode_cs.get("range") is None and abrp_cs.get("range") is not None:
+                    enode_cs["range"] = abrp_cs["range"]
+                    enode_cache["chargeState"] = enode_cs
+                    enode_updated = True
+
+                # ── Enode → ABRP: augment ABRP with Enode-only data ──
+                enode_vin = enode_cache.get("information", {}).get("vin")
+                abrp_vin = abrp_cache.get("information", {}).get("vin")
+                if enode_vin and not abrp_vin:
+                    # Store VIN in cache JSON for display, but don't set the indexed
+                    # vin column since Enode already owns it (unique constraint)
+                    abrp_cache.setdefault("information", {})["vin"] = enode_vin
+                    abrp_updated = True
+
+                # chargeLimit, maxCurrent, range, batteryCapacity, etc.
+                for field in ("chargeLimit", "maxCurrent", "powerDeliveryState", "isPluggedIn", "isFullyCharged", "range", "batteryCapacity", "chargeTimeRemaining"):
+                    if enode_cs.get(field) is not None and abrp_cs.get(field) is None:
+                        abrp_cs[field] = enode_cs[field]
+                        abrp_cache["chargeState"] = abrp_cs
+                        abrp_updated = True
+
+                # Odometer: copy Enode → ABRP if ABRP is missing
+                abrp_odo_rev = abrp_cache.get("odometer") or {}
+                enode_odo_rev = enode_cache.get("odometer") or {}
+                if not abrp_odo_rev.get("distance") and enode_odo_rev.get("distance"):
+                    abrp_cache["odometer"] = enode_odo_rev
+                    abrp_updated = True
+
+                # Capabilities
+                if enode_cache.get("capabilities") and not abrp_cache.get("capabilities"):
+                    abrp_cache["capabilities"] = enode_cache["capabilities"]
+                    abrp_updated = True
+
+                # Save updated caches
+                if enode_updated:
+                    supabase.table("vehicles").update({
+                        "vehicle_cache": json.dumps(enode_cache),
+                    }).eq("id", enode_v["id"]).execute()
+                    logger.info(f"[🔀 Cross-populate] ABRP → Enode for {enode_v['_brand']} user {user_id}")
+
+                if abrp_updated:
+                    update_payload = {"vehicle_cache": json.dumps(abrp_cache)}
+                    supabase.table("vehicles").update(update_payload).eq("id", abrp_v["id"]).execute()
+                    logger.info(f"[🔀 Cross-populate] Enode → ABRP for {abrp_v['_brand']} user {user_id}")
+
+    except Exception as e:
+        logger.error(f"[❌ cross_populate_vehicle_data] {e}")
 
 
 async def get_vehicle_by_id(vehicle_id: str):
@@ -283,6 +456,17 @@ async def get_total_vehicle_count() -> int:
     except Exception as e:
         logger.error(f"[❌ get_total_vehicle_count] {e}")
         return 0
+
+async def get_abrp_pull_vehicle_count() -> int:
+    """Returns the number of vehicles sourced from ABRP Pull."""
+    supabase = get_supabase_admin_client()
+    try:
+        res = supabase.table("vehicles").select("id", count="exact").eq("source", "abrp").execute()
+        return res.count
+    except Exception as e:
+        logger.error(f"[❌ get_abrp_pull_vehicle_count] {e}")
+        return 0
+
 
 async def get_new_vehicle_count(days: int) -> int:
     """

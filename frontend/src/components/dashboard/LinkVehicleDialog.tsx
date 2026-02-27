@@ -80,7 +80,7 @@ export default function LinkVehicleDialog({ accessToken, hasEnodeAccount }: Link
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="relative">
         <DialogTrigger asChild>
-          <Button variant="default" disabled={isDisabled}>Link Vehicle</Button>
+          <Button variant="default" disabled={isDisabled}>Link Vehicle with Enode</Button>
         </DialogTrigger>
         {isDisabled && !isApproved ? null : isDisabled && (
           <p className="text-xs text-amber-600 mt-1">

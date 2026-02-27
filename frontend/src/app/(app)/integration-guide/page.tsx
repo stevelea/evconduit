@@ -30,17 +30,22 @@ export default function IntegrationGuidePage() {
           <li>Click <strong>&quot;Create API Key&quot;</strong> and copy the key</li>
         </ul>
 
-        {/* Hardcoded string */}
         <h2 className="text-2xl font-semibold">3. Link Your Vehicle</h2>
+        <p className="mb-2">There are two ways to connect your vehicle:</p>
+
+        <h3 className="text-lg font-semibold mt-4 mb-2">Option A: Via Enode (Recommended)</h3>
         <ul className="list-disc ml-6">
-          {/* Hardcoded string */}
           <li>Go to the Dashboard</li>
-          {/* Hardcoded string */}
-          <li>Click <strong>&quot;Link Vehicle&quot;</strong> and follow the manufacturer&apos;s login</li>
-          {/* Hardcoded string */}
+          <li>Click <strong>&quot;Link Vehicle with Enode&quot;</strong> and follow the manufacturer&apos;s login</li>
           <li>We support most major EV brands including: Tesla, BMW, Mercedes, Audi, VW, Skoda, Seat, Cupra, Polestar, Volvo, Hyundai, Kia, Nissan, Renault, Peugeot, Citroën, Opel, Ford, GM, and more</li>
-          {/* Hardcoded string */}
           <li>After linking, click <strong>&quot;Copy ID&quot;</strong> to get the Vehicle ID (Not needed for HACS integration)</li>
+        </ul>
+
+        <h3 className="text-lg font-semibold mt-4 mb-2">Option B: Via ABRP Pull</h3>
+        <ul className="list-disc ml-6">
+          <li>If Enode capacity is full, or your vehicle is already connected to ABRP, you can pull data from <strong>A Better Route Planner</strong> instead</li>
+          <li>Click <strong>&quot;Link Vehicle with ABRP&quot;</strong> on the Dashboard, or go to your <a href="/profile#abrp-pull" className="text-blue-600 underline">Profile → ABRP Pull Settings</a></li>
+          <li>See the <a href="/docs/abrp-pull" className="text-blue-600 underline">ABRP Pull Guide</a> for full setup instructions</li>
         </ul>
 
         {/* Hardcoded string */}

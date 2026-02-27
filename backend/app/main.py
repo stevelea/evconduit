@@ -26,6 +26,7 @@ from app.storage.telemetry import log_api_telemetry
 from app.services.webhook_scheduler import webhook_scheduler
 from app.services.vehicle_polling import vehicle_polling_scheduler
 from app.services.inactive_user_cleanup import inactive_user_cleanup_scheduler
+from app.services.abrp_pull_scheduler import abrp_pull_scheduler
 from app.services.metrics import track_api_request
 
 # Initialize Sentry
@@ -55,9 +56,17 @@ async def lifespan(app: FastAPI):
     await inactive_user_cleanup_scheduler.start()
     logger.info("✅ Inactive user cleanup scheduler started")
 
+    logger.info("🔄 Starting ABRP pull scheduler...")
+    await abrp_pull_scheduler.start()
+    logger.info("✅ ABRP pull scheduler started")
+
     yield
 
     # Shutdown
+    logger.info("🛑 Stopping ABRP pull scheduler...")
+    await abrp_pull_scheduler.stop()
+    logger.info("✅ ABRP pull scheduler stopped")
+
     logger.info("🛑 Stopping inactive user cleanup scheduler...")
     await inactive_user_cleanup_scheduler.stop()
     logger.info("✅ Inactive user cleanup scheduler stopped")

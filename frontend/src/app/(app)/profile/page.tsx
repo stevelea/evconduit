@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import ApiKeySection from '@/components/profile/ApiKeySection';
 import HaWebhookSettingsCard from '@/components/profile/HaWebhookSettingsCard';
 import AbrpSettingsCard from '@/components/profile/AbrpSettingsCard';
+import AbrpPullSettingsCard from '@/components/profile/AbrpPullSettingsCard';
 import BillingCard from '@/components/profile/BillingCard';
 import SubscribeCard from '@/components/profile/SubscribeCard';
 import TrialCard from '@/components/profile/TrialCard';
@@ -27,11 +28,10 @@ export default function ProfilePage() {
   const [notifyOffline, setNotifyOffline] = useState(false);
   const [notifyLoading, setNotifyLoading] = useState(false);
 
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [subscribeLoading, setSubscribeLoading] = useState(false);
-
   const [nameSaveLoading, setNameSaveLoading] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [countrySaveLoading, setCountrySaveLoading] = useState(false);
+  const [countryCode, setCountryCode] = useState<string | null>(null);
 
   const router = useRouter();
 
@@ -42,31 +42,21 @@ export default function ProfilePage() {
     if (mergedUser?.name) {
       setDisplayName(mergedUser.name);
     }
+    if (mergedUser?.country_code) {
+      setCountryCode(mergedUser.country_code);
+    }
   }, [mergedUser]);
 
+  // Scroll to hash target after page loads (e.g. #abrp-pull)
   useEffect(() => {
-    // Only run if accessToken exists
-    if (!accessToken) return;
+    if (!loading && typeof window !== 'undefined' && window.location.hash) {
+      const id = window.location.hash.slice(1);
+      setTimeout(() => {
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+    }
+  }, [loading]);
 
-    setSubscribeLoading(true);
-
-    authFetch('/newsletter/manage/status', {
-      method: 'GET',
-      accessToken,
-    })
-      .then(({ data, error }) => {
-        if (error) {
-          throw error;
-        }
-        setIsSubscribed(!!data?.is_subscribed); // Fallback to false if undefined
-      })
-      .catch(() => {
-        toast.error('Could not check newsletter status'); /* Hardcoded string */
-      })
-      .finally(() => {
-        setSubscribeLoading(false);
-      });
-  }, [accessToken]);
 
   if (loading || !user || !accessToken) {
     return (
@@ -134,43 +124,32 @@ export default function ProfilePage() {
     return true;
   };
 
-  const handleToggleNewsletter = async (checked: boolean) => {
-    if (!accessToken || !user?.email) {
-      toast.error('User or access token missing'); /* Hardcoded string */
-      return;
+  const handleCountrySave = async (code: string): Promise<boolean> => {
+    if (!accessToken) {
+      toast.error('Not authenticated');
+      return false;
     }
 
-    setSubscribeLoading(true);
+    setCountrySaveLoading(true);
+    const { error } = await authFetch('/me/country', {
+      method: 'PATCH',
+      accessToken,
+      body: JSON.stringify({ country_code: code }),
+      headers: { 'Content-Type': 'application/json' },
+    });
 
-    try {
-      const endpoint = checked
-        ? '/newsletter/manage/subscribe'
-        : '/newsletter/manage/unsubscribe';
+    setCountrySaveLoading(false);
 
-      const { error } = await authFetch(endpoint, {
-        method: 'POST',
-        accessToken,
-        body: JSON.stringify({ email: user.email }),
-      });
-
-      if (error) throw new Error(error.message || 'Failed'); /* Hardcoded string */
-
-      setIsSubscribed(checked);
-      toast.success(
-        checked
-          ? 'You are now subscribed to the newsletter.' /* Hardcoded string */
-          : 'You have unsubscribed from the newsletter.' /* Hardcoded string */
-      );
-    } catch (error) {
-      let errorMessage = 'Could not update subscription'; /* Hardcoded string */
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      toast.error(errorMessage);
-    } finally {
-      setSubscribeLoading(false);
+    if (error) {
+      toast.error('Failed to update country');
+      return false;
     }
+
+    setCountryCode(code);
+    toast.success('Country updated');
+    return true;
   };
+
 
   return (
     <div className="container py-4">
@@ -187,17 +166,18 @@ export default function ProfilePage() {
             purchasedApiTokens={mergedUser?.purchased_api_tokens ?? 0}
             notifyOffline={notifyOffline}
             notifyLoading={notifyLoading}
-            isSubscribed={isSubscribed}
-            subscribeLoading={subscribeLoading}
             avatarUrl={user.user_metadata?.avatar_url ?? null}
             onNameSave={handleNameSave}
             nameSaveLoading={nameSaveLoading}
+            onCountrySave={handleCountrySave}
+            countrySaveLoading={countrySaveLoading}
+            countryCode={countryCode}
             onToggleNotify={handleToggleNotify}
-            onToggleSubscribe={handleToggleNewsletter}
           />
           <ApiKeySection userId={user.id} accessToken={accessToken} />
           <HaWebhookSettingsCard userId={user.id} accessToken={accessToken} />
           <AbrpSettingsCard userId={user.id} accessToken={accessToken} />
+          <AbrpPullSettingsCard userId={user.id} accessToken={accessToken} />
         </div>
         <div className="flex flex-col gap-4">
           {loadingBilling ? (

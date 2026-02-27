@@ -21,6 +21,7 @@ type Vehicle = {
   userName: string | null;
   userEmail: string | null;
   vendor: string;
+  source?: string;
   lastSeen: string;
   isReachable: boolean;
   countryCode?: string | null;
@@ -35,9 +36,30 @@ type Vehicle = {
     displayName: string;
   };
   chargeState?: {
-    batteryLevel: number;
-    isPluggedIn: boolean;
+    batteryLevel?: number | null;
+    isCharging?: boolean;
+    isPluggedIn?: boolean;
+    isFullyCharged?: boolean;
+    batteryCapacity?: number | null;
+    chargeLimit?: number | null;
+    chargeRate?: number | null;
+    chargeTimeRemaining?: number | null;
+    lastUpdated?: string;
+    maxCurrent?: number | null;
+    powerDeliveryState?: string;
+    range?: number | null;
   };
+  location?: {
+    latitude: number;
+    longitude: number;
+    lastUpdated?: string;
+  } | null;
+  odometer?: {
+    distance?: number | null;
+    lastUpdated?: string | null;
+  } | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 };
 
 // Convert country code to flag emoji
@@ -48,6 +70,119 @@ function countryCodeToFlag(countryCode: string | null | undefined): string {
     .split('')
     .map(char => 127397 + char.charCodeAt(0));
   return String.fromCodePoint(...codePoints);
+}
+
+function VehicleDetailView({ vehicle }: { vehicle: Vehicle | null }) {
+  if (!vehicle) return null;
+  const v = vehicle;
+  const cs = v.chargeState;
+  const loc = v.location;
+  const odo = v.odometer;
+  const abrpExtra = v.abrp_extra as Record<string, number | string> | undefined;
+  const isAbrp = v.source === 'abrp';
+
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 mt-3">{title}</h4>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+
+  const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="flex justify-between text-sm">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-900 font-medium text-right">{value ?? '–'}</span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-1 max-h-[70vh] overflow-y-auto pr-1">
+      <Section title="Owner">
+        <Row label="User" value={v.userName} />
+        <Row label="Email" value={v.userEmail} />
+        <Row label="User ID" value={<span className="font-mono text-xs">{v.userId}</span>} />
+      </Section>
+
+      <Section title="Vehicle">
+        <Row label="Display Name" value={v.information?.displayName} />
+        <Row label="Brand" value={v.information?.brand} />
+        <Row label="Model" value={v.information?.model} />
+        {v.information?.year ? <Row label="Year" value={v.information.year} /> : null}
+        <Row label="VIN" value={v.information?.vin || '–'} />
+        <Row label="Vendor" value={v.vendor} />
+        <Row label="Source" value={
+          isAbrp
+            ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP Web Pull</span>
+            : <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">Enode</span>
+        } />
+        <Row label="Account" value={v.enodeAccountName} />
+        <Row label="Vehicle ID" value={<span className="font-mono text-xs">{v.id}</span>} />
+        <Row label="Reachable" value={v.isReachable ? 'Yes' : 'No'} />
+        {v.countryCode && <Row label="Country" value={`${countryCodeToFlag(v.countryCode)} ${v.countryCode}`} />}
+      </Section>
+
+      <Section title="Charge State">
+        <Row label="Battery" value={cs?.batteryLevel != null ? `${cs.batteryLevel}%` : null} />
+        <Row label="Charging" value={cs?.isCharging != null ? (cs.isCharging ? 'Yes' : 'No') : null} />
+        <Row label="Plugged In" value={cs?.isPluggedIn != null ? (cs.isPluggedIn ? 'Yes' : 'No') : null} />
+        <Row label="Fully Charged" value={cs?.isFullyCharged != null ? (cs.isFullyCharged ? 'Yes' : 'No') : null} />
+        {cs?.chargeRate != null && <Row label="Charge Rate" value={`${cs.chargeRate} kW`} />}
+        {cs?.batteryCapacity != null && <Row label="Battery Capacity" value={`${cs.batteryCapacity} kWh`} />}
+        {cs?.chargeLimit != null && <Row label="Charge Limit" value={`${cs.chargeLimit}%`} />}
+        {cs?.range != null && <Row label="Range" value={`${cs.range} km`} />}
+        {cs?.maxCurrent != null && <Row label="Max Current" value={`${cs.maxCurrent} A`} />}
+        {cs?.powerDeliveryState && <Row label="Power State" value={cs.powerDeliveryState} />}
+        {cs?.chargeTimeRemaining != null && <Row label="Time Remaining" value={`${cs.chargeTimeRemaining} min`} />}
+        {cs?.lastUpdated && <Row label="Updated" value={new Date(cs.lastUpdated).toLocaleString()} />}
+      </Section>
+
+      {loc && (
+        <Section title="Location">
+          <Row label="Latitude" value={loc.latitude} />
+          <Row label="Longitude" value={loc.longitude} />
+          {loc.lastUpdated && <Row label="Updated" value={new Date(loc.lastUpdated).toLocaleString()} />}
+        </Section>
+      )}
+
+      {odo && odo.distance != null && (
+        <Section title="Odometer">
+          <Row label="Distance" value={`${odo.distance} km`} />
+          {odo.lastUpdated && <Row label="Updated" value={new Date(odo.lastUpdated).toLocaleString()} />}
+        </Section>
+      )}
+
+      {isAbrp && abrpExtra && Object.keys(abrpExtra).length > 0 && (
+        <Section title="ABRP Extra Data">
+          {abrpExtra.soh != null && <Row label="State of Health" value={`${abrpExtra.soh}%`} />}
+          {abrpExtra.soe != null && <Row label="State of Energy" value={`${abrpExtra.soe} kWh`} />}
+          {abrpExtra.voltage != null && <Row label="Voltage" value={`${abrpExtra.voltage} V`} />}
+          {abrpExtra.current != null && <Row label="Current" value={`${abrpExtra.current} A`} />}
+          {abrpExtra.batt_temp != null && <Row label="Battery Temp" value={`${abrpExtra.batt_temp} °C`} />}
+          {abrpExtra.ext_temp != null && <Row label="External Temp" value={`${abrpExtra.ext_temp} °C`} />}
+          {abrpExtra.cabin_temp != null && <Row label="Cabin Temp" value={`${abrpExtra.cabin_temp} °C`} />}
+          {abrpExtra.speed != null && <Row label="Speed" value={`${abrpExtra.speed} km/h`} />}
+          {abrpExtra.heading != null && <Row label="Heading" value={`${abrpExtra.heading}°`} />}
+          {abrpExtra.odometer != null && <Row label="Odometer" value={`${abrpExtra.odometer} km`} />}
+          {abrpExtra.elevation != null && <Row label="Elevation" value={`${abrpExtra.elevation} m`} />}
+          {abrpExtra.capacity != null && <Row label="Battery Capacity" value={`${abrpExtra.capacity} kWh`} />}
+          {abrpExtra.est_battery_range != null && <Row label="Est. Range" value={`${abrpExtra.est_battery_range} km`} />}
+          {abrpExtra.hvac_power != null && <Row label="HVAC Power" value={`${abrpExtra.hvac_power} W`} />}
+          {abrpExtra.hvac_setpoint != null && <Row label="HVAC Setpoint" value={`${abrpExtra.hvac_setpoint} °C`} />}
+          {abrpExtra.is_dcfc != null && <Row label="DC Fast Charging" value={abrpExtra.is_dcfc ? 'Yes' : 'No'} />}
+          {abrpExtra.is_parked != null && <Row label="Parked" value={abrpExtra.is_parked ? 'Yes' : 'No'} />}
+          {abrpExtra.tire_pressure_fl != null && <Row label="Tire FL" value={`${abrpExtra.tire_pressure_fl} bar`} />}
+          {abrpExtra.tire_pressure_fr != null && <Row label="Tire FR" value={`${abrpExtra.tire_pressure_fr} bar`} />}
+          {abrpExtra.tire_pressure_rl != null && <Row label="Tire RL" value={`${abrpExtra.tire_pressure_rl} bar`} />}
+          {abrpExtra.tire_pressure_rr != null && <Row label="Tire RR" value={`${abrpExtra.tire_pressure_rr} bar`} />}
+        </Section>
+      )}
+
+      <Section title="Timestamps">
+        <Row label="Last Seen" value={v.lastSeen ? new Date(v.lastSeen).toLocaleString() : null} />
+        {v.createdAt && <Row label="Added" value={new Date(v.createdAt).toLocaleString()} />}
+      </Section>
+    </div>
+  );
 }
 
 export default function VehicleAdminPage() {
@@ -188,21 +323,9 @@ export default function VehicleAdminPage() {
                         <Eye className="w-4 h-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader><DialogTitle>Vehicle Details</DialogTitle> {/* Hardcoded string */}</DialogHeader>
-                      <div className="space-y-2 text-sm">
-                        <div><strong>User:</strong> {selected?.userName || '–'}</div> {/* Hardcoded string */}
-                        <div><strong>Email:</strong> {selected?.userEmail || '–'}</div> {/* Hardcoded string */}
-                        <div><strong>Display Name:</strong> {selected?.information.displayName}</div> {/* Hardcoded string */}
-                        <div><strong>Vendor:</strong> {selected?.vendor}</div> {/* Hardcoded string */}
-                        <div><strong>Model:</strong> {selected?.information.model}</div> {/* Hardcoded string */}
-                        <div><strong>VIN:</strong> {selected?.information.vin}</div> {/* Hardcoded string */}
-                        <div><strong>Battery:</strong> {selected?.chargeState?.batteryLevel ?? '–'}%</div> {/* Hardcoded string */}
-                        <div><strong>Plugged In:</strong> {selected?.chargeState?.isPluggedIn ? 'Yes' : 'No'}</div> {/* Hardcoded string */}
-                        <div><strong>Last Seen:</strong> {selected?.lastSeen ? new Date(selected.lastSeen).toLocaleString() : '–'}</div> {/* Hardcoded string */}
-                        <div><strong>Vehicle ID:</strong> {selected?.id}</div> {/* Hardcoded string */}
-                        <div><strong>User ID:</strong> {selected?.userId}</div> {/* Hardcoded string */}
-                      </div>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader><DialogTitle>Vehicle Details</DialogTitle></DialogHeader>
+                      <VehicleDetailView vehicle={selected} />
                     </DialogContent>
                   </Dialog>
                 </td>
@@ -229,21 +352,9 @@ export default function VehicleAdminPage() {
                     <Eye className="w-4 h-4" />
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader><DialogTitle>Vehicle Details</DialogTitle> {/* Hardcoded string */}</DialogHeader>
-                  <div className="space-y-2 text-sm">
-                    <div><strong>User:</strong> {selected?.userName || '–'}</div> {/* Hardcoded string */}
-                    <div><strong>Email:</strong> {selected?.userEmail || '–'}</div> {/* Hardcoded string */}
-                    <div><strong>Display Name:</strong> {selected?.information.displayName}</div> {/* Hardcoded string */}
-                    <div><strong>Vendor:</strong> {selected?.vendor}</div> {/* Hardcoded string */}
-                    <div><strong>Model:</strong> {selected?.information.model}</div> {/* Hardcoded string */}
-                    <div><strong>VIN:</strong> {selected?.information.vin}</div> {/* Hardcoded string */}
-                    <div><strong>Battery:</strong> {selected?.chargeState?.batteryLevel ?? '–'}%</div> {/* Hardcoded string */}
-                    <div><strong>Plugged In:</strong> {selected?.chargeState?.isPluggedIn ? 'Yes' : 'No'}</div> {/* Hardcoded string */}
-                    <div><strong>Last Seen:</strong> {selected?.lastSeen ? new Date(selected.lastSeen).toLocaleString() : '–'}</div> {/* Hardcoded string */}
-                    <div><strong>Vehicle ID:</strong> {selected?.id}</div> {/* Hardcoded string */}
-                    <div><strong>User ID:</strong> {selected?.userId}</div> {/* Hardcoded string */}
-                  </div>
+                <DialogContent className="max-w-md">
+                  <DialogHeader><DialogTitle>Vehicle Details</DialogTitle></DialogHeader>
+                  <VehicleDetailView vehicle={selected} />
                 </DialogContent>
               </Dialog>
             </div>

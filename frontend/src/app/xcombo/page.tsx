@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight, Languages } from 'lucide-react';
+import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight, Languages, Copy } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://backend.evconduit.com/api';
 
@@ -228,6 +228,7 @@ export default function XComboPage() {
   const [submittedBy, setSubmittedBy] = useState('');
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [translating, setTranslating] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchScenes();
@@ -659,6 +660,20 @@ export default function XComboPage() {
                         </span>
                       )}
                     </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(scene.scene_id);
+                          setCopiedId(scene.scene_id);
+                          setTimeout(() => setCopiedId(null), 2000);
+                        }}
+                        className="text-xs text-gray-500 hover:text-[#7dd96e] flex items-center gap-1 transition-colors"
+                        title="Copy Scene ID"
+                      >
+                        <Copy className="h-3 w-3" />
+                        {copiedId === scene.scene_id ? 'Copied!' : 'ID'}
+                      </button>
                     <button
                       onClick={(e) => toggleSteps(e, scene.scene_id)}
                       className="text-xs text-gray-400 hover:text-[#7dd96e] flex items-center gap-1 transition-colors"
@@ -671,6 +686,7 @@ export default function XComboPage() {
                         <ChevronDown className="h-3 w-3" />
                       )}
                     </button>
+                    </div>
                   </div>
                   {scene.submitted_by && (
                     <span className="text-xs text-gray-500 block">

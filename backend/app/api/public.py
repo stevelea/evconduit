@@ -10,6 +10,7 @@ from app.enode.link import get_link_result
 from app.storage.enode_account import get_all_enode_accounts
 from app.storage.interest import assign_interest_user, get_interest_by_access_code, save_interest
 from app.storage.xcombo import list_approved_xcombo_scenes, submit_xcombo_scene
+from app.storage.useful_links import list_active_useful_links
 from app.storage.status_logs import calculate_uptime, get_daily_status, get_status_panel_data
 from app.services.brevo import add_or_update_brevo_contact, remove_brevo_contact_from_list
 from app.storage.newsletter import create_newsletter_request, remove_public_subscriber, verify_newsletter_request
@@ -328,6 +329,19 @@ async def public_unsubscribe(request: PublicUnsubscribeRequest):
     except Exception as e:
         logger.error("❌ Unexpected error during unsubscribe for %s: %s", email, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal error during unsubscribe")
+
+
+# -------------------------------------------------------------------
+# Useful Links (landing page banner)
+# -------------------------------------------------------------------
+@router.get("/public/useful-links", summary="List active useful links")
+async def get_useful_links():
+    """Returns all active useful links for the landing page banner."""
+    try:
+        return list_active_useful_links()
+    except Exception as e:
+        logger.error(f"Failed to list useful links: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch useful links")
 
 
 # -------------------------------------------------------------------

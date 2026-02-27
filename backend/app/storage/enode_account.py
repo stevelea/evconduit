@@ -39,6 +39,7 @@ async def get_all_enode_accounts() -> list[dict]:
                     supabase.table("vehicles")
                     .select("id", count="exact")
                     .in_("user_id", user_ids)
+                    .neq("source", "abrp")
                     .execute()
                 )
                 vehicle_count = v_res.count or 0

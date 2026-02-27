@@ -48,6 +48,8 @@ interface InsightsData {
   users_on_trial?: number;
   ha_users?: number;
   abrp_users?: number;
+  abrp_pull_users?: number;
+  abrp_pull_vehicles?: number;
   vehicles_by_country?: Array<{
     country_code: string;
     country: string;
@@ -277,9 +279,21 @@ export default function AdminDashboardPage() {
                 <div className="bg-orange-50 p-3 rounded-lg">
                   <div className="flex items-center gap-2 text-orange-600 mb-1">
                     <MapPin className="w-4 h-4" />
-                    <span className="text-xs font-medium">ABRP Users</span>
+                    <span className="text-xs font-medium">ABRP Push</span>
                   </div>
                   <div className="text-2xl font-bold">{insights.abrp_users ?? 'N/A'}</div>
+                  <div className="text-xs text-gray-500">users</div>
+                </div>
+
+                <div className="bg-indigo-50 p-3 rounded-lg">
+                  <div className="flex items-center gap-2 text-indigo-600 mb-1">
+                    <Car className="w-4 h-4" />
+                    <span className="text-xs font-medium">ABRP Pull</span>
+                  </div>
+                  <div className="text-2xl font-bold">{insights.abrp_pull_vehicles ?? 'N/A'}</div>
+                  <div className="text-xs text-gray-500">
+                    {insights.abrp_pull_users != null ? `${insights.abrp_pull_users} user${insights.abrp_pull_users !== 1 ? 's' : ''}` : 'vehicles'}
+                  </div>
                 </div>
               </div>
             </CardContent>

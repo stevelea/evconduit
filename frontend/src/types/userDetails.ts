@@ -21,4 +21,5 @@ export type UserDetails = {
   default_country_code?: string | null;
   enode_account_id?: string | null;
   enode_account_name?: string | null;
+  country_code?: string | null;
 };

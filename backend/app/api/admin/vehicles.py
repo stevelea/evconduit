@@ -66,10 +66,20 @@ async def list_all_vehicles(user=Depends(require_admin)):
             user_info = user_map.get(user_id, {})
             enode_account_id = user_info.get("enode_account_id")
 
+            source = v.get("source", "enode")
+            # For ABRP vehicles, show "ABRP Web Pull" instead of Enode account
+            if source == "abrp":
+                account_display = "ABRP Web Pull"
+            elif enode_account_id:
+                account_display = account_name_map.get(enode_account_id, "Unknown")
+            else:
+                account_display = "Unassigned"
+
             vehicle = {
                 "id": v.get("vehicle_id"),
                 "userId": user_id,
                 "vendor": v.get("vendor"),
+                "source": source,
                 "brand": cache.get("information", {}).get("brand", v.get("vendor")),
                 "model": cache.get("information", {}).get("model"),
                 "year": cache.get("information", {}).get("year"),
@@ -85,8 +95,9 @@ async def list_all_vehicles(user=Depends(require_admin)):
                 "userEmail": user_info.get("email"),
                 "countryCode": v.get("country_code"),
                 "enodeAccountId": enode_account_id,
-                "enodeAccountName": account_name_map.get(enode_account_id, "Unknown") if enode_account_id else "Unassigned",
+                "enodeAccountName": account_display,
                 "createdAt": v.get("created_at"),
+                "abrp_extra": cache.get("abrp_extra"),
             }
             vehicles.append(vehicle)
 

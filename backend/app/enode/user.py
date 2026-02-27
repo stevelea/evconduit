@@ -54,7 +54,7 @@ async def get_user_vehicles_enode(user_id: str, account: dict) -> list:
     token = await get_access_token(account)
     url = f"{account['base_url']}/users/{user_id}/vehicles"
     headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
         res = await client.get(url, headers=headers)
         res.raise_for_status()
         return res.json().get("data", [])

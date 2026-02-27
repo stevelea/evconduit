@@ -11,7 +11,7 @@ from app.logger import logger
 from app.services.brevo import add_or_update_brevo_contact
 from app.services.pushover_service import get_pushover_service
 from app.services.abrp_service import get_abrp_service
-from app.storage.user import get_abrp_stats
+from app.storage.user import get_abrp_stats, get_abrp_pull_stats, update_abrp_pull_stats
 from app.storage.poll_logs import count_polls_since, count_polls_in_period # NEW: Import count_polls_in_period
 from app.storage.settings import get_setting_by_name
 from app.storage.subscription import get_user_record, get_user_subscription # NEW: Import get_user_subscription
@@ -321,6 +321,28 @@ async def update_name(payload: UpdateNameRequest, user=Depends(get_supabase_user
         raise HTTPException(status_code=500, detail="Failed to update name")
 
 
+class UpdateCountryRequest(BaseModel):
+    country_code: str
+
+
+@router.patch("/me/country")
+async def update_country(payload: UpdateCountryRequest, user=Depends(get_supabase_user)):
+    """Update the current user's country code (2-letter ISO code)."""
+    user_id = user["sub"]
+    code = payload.country_code.strip().upper()
+
+    if len(code) != 2 or not code.isalpha():
+        raise HTTPException(status_code=400, detail="Country code must be a 2-letter ISO code")
+
+    try:
+        await update_user(user_id=user_id, country_code=code)
+        logger.info(f"[✅] User {user_id} updated country to '{code}'")
+        return {"success": True, "country_code": code}
+    except Exception as e:
+        logger.error(f"[❌] Failed to update country for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update country")
+
+
 @router.post("/me/activate-pro-trial")
 async def activate_pro_trial(user=Depends(get_supabase_user)):
     user_id = user["sub"]
@@ -549,6 +571,47 @@ async def refresh_my_vehicles(user: dict = Depends(get_supabase_user)):
         raise HTTPException(status_code=502, detail=f"Error refreshing vehicle data: {str(e)}")
 
 
+@router.post("/me/vehicles/refresh-abrp")
+async def refresh_my_abrp_vehicles(user: dict = Depends(get_supabase_user)):
+    """
+    Force a refresh of ABRP vehicle data by pulling telemetry from ABRP.
+    """
+    from app.services.abrp_pull_scheduler import pull_abrp_for_user
+
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    session_token = getattr(local_user, "abrp_pull_session_token", None)
+    api_key = getattr(local_user, "abrp_pull_api_key", None)
+    vehicle_ids = getattr(local_user, "abrp_pull_vehicle_ids", None)
+
+    if not session_token or not api_key or not vehicle_ids:
+        raise HTTPException(status_code=400, detail="ABRP pull credentials not configured")
+
+    logger.info(f"[refresh_abrp] Manual ABRP refresh requested for user_id={user_id}")
+
+    try:
+        user_data = {
+            "id": user_id,
+            "abrp_pull_session_token": session_token,
+            "abrp_pull_api_key": api_key,
+            "abrp_pull_vehicle_ids": vehicle_ids,
+        }
+        saved_count = await pull_abrp_for_user(user_data)
+
+        return {
+            "success": True,
+            "vehicles_updated": saved_count,
+            "message": f"Refreshed {saved_count} vehicle(s) from ABRP",
+        }
+    except Exception as e:
+        logger.error(f"[refresh_abrp] Error: {e}", exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Error refreshing ABRP data: {str(e)}")
+
+
 # ============== ABRP Settings ==============
 
 class ABRPSettingsResponse(BaseModel):
@@ -698,3 +761,252 @@ async def send_test_abrp_telemetry(user=Depends(get_supabase_user)):
             status_code=500,
             detail=result.get("message", "Failed to send test telemetry")
         )
+
+
+# ============== ABRP Pull Settings (Read FROM ABRP) ==============
+
+class ABRPPullSettingsResponse(BaseModel):
+    """Response model for ABRP pull settings"""
+    abrp_pull_enabled: bool
+    abrp_pull_session_token: Optional[str] = None
+    abrp_pull_api_key: Optional[str] = None
+    abrp_pull_vehicle_ids: Optional[str] = None
+    last_pull_at: Optional[str] = None
+    pull_success_count: int = 0
+    pull_fail_count: int = 0
+    last_error: Optional[str] = None
+
+
+class UpdateABRPPullSettingsRequest(BaseModel):
+    """Request model for updating ABRP pull settings"""
+    abrp_pull_session_token: Optional[str] = None
+    abrp_pull_api_key: Optional[str] = None
+    abrp_pull_vehicle_ids: Optional[str] = None
+    abrp_pull_enabled: Optional[bool] = None
+
+
+@router.get("/me/abrp/pull", response_model=ABRPPullSettingsResponse)
+async def get_abrp_pull_settings(user=Depends(get_supabase_user)):
+    """Get current user's ABRP pull settings."""
+    user_id = user["sub"]
+
+    stats = get_abrp_pull_stats(user_id)
+    if not stats:
+        return ABRPPullSettingsResponse(
+            abrp_pull_enabled=False,
+        )
+
+    return ABRPPullSettingsResponse(
+        abrp_pull_enabled=stats.get("abrp_pull_enabled", False),
+        abrp_pull_session_token=stats.get("abrp_pull_session_token"),
+        abrp_pull_api_key=stats.get("abrp_pull_api_key"),
+        abrp_pull_vehicle_ids=stats.get("abrp_pull_vehicle_ids"),
+        last_pull_at=stats.get("last_pull_at"),
+        pull_success_count=stats.get("pull_success_count", 0),
+        pull_fail_count=stats.get("pull_fail_count", 0),
+        last_error=stats.get("last_error"),
+    )
+
+
+@router.patch("/me/abrp/pull")
+async def update_abrp_pull_settings(
+    payload: UpdateABRPPullSettingsRequest,
+    user=Depends(get_supabase_user)
+):
+    """Update user's ABRP pull settings (credentials and enabled toggle)."""
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    update_data = {}
+
+    # Handle session token
+    if payload.abrp_pull_session_token is not None:
+        if payload.abrp_pull_session_token == "":
+            update_data["abrp_pull_session_token"] = None
+        else:
+            update_data["abrp_pull_session_token"] = payload.abrp_pull_session_token
+
+    # Handle API key
+    if payload.abrp_pull_api_key is not None:
+        if payload.abrp_pull_api_key == "":
+            update_data["abrp_pull_api_key"] = None
+        else:
+            update_data["abrp_pull_api_key"] = payload.abrp_pull_api_key
+
+    # Handle vehicle IDs
+    if payload.abrp_pull_vehicle_ids is not None:
+        if payload.abrp_pull_vehicle_ids == "":
+            update_data["abrp_pull_vehicle_ids"] = None
+        else:
+            update_data["abrp_pull_vehicle_ids"] = payload.abrp_pull_vehicle_ids
+
+    # If all credentials are being cleared, also disable
+    if (
+        update_data.get("abrp_pull_session_token") is None
+        and update_data.get("abrp_pull_api_key") is None
+        and update_data.get("abrp_pull_vehicle_ids") is None
+        and len(update_data) == 3  # all three are being cleared
+    ):
+        update_data["abrp_pull_enabled"] = False
+
+    # Handle enabled toggle
+    if payload.abrp_pull_enabled is not None:
+        if payload.abrp_pull_enabled:
+            # Check credentials exist
+            session_token = update_data.get("abrp_pull_session_token") or getattr(local_user, "abrp_pull_session_token", None)
+            api_key = update_data.get("abrp_pull_api_key") or getattr(local_user, "abrp_pull_api_key", None)
+            vehicle_ids = update_data.get("abrp_pull_vehicle_ids") or getattr(local_user, "abrp_pull_vehicle_ids", None)
+            if not session_token or not api_key or not vehicle_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot enable ABRP Pull without session token, API key, and vehicle IDs"
+                )
+        update_data["abrp_pull_enabled"] = payload.abrp_pull_enabled
+
+    if update_data:
+        await update_user(user_id=user_id, **update_data)
+        logger.info(f"[✅] User {user_id} updated ABRP pull settings")
+
+    return {"success": True, "message": "ABRP pull settings updated"}
+
+
+@router.post("/me/abrp/pull/discover")
+async def discover_abrp_vehicles(user=Depends(get_supabase_user)):
+    """
+    Discover available vehicles in the ABRP session.
+    Returns a list of vehicles with name, model, vehicle_id, and whether they have telemetry.
+    """
+    from app.services.abrp_pull_service import get_abrp_pull_service
+
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    session_id = getattr(local_user, "abrp_pull_session_token", None)
+    api_key = getattr(local_user, "abrp_pull_api_key", None)
+    vehicle_id = getattr(local_user, "abrp_pull_vehicle_ids", None)
+
+    if not session_id or not api_key or not vehicle_id:
+        raise HTTPException(
+            status_code=400,
+            detail="ABRP pull credentials not configured"
+        )
+
+    service = get_abrp_pull_service()
+    # Use the first vehicle ID as the wakeup ID to discover the session
+    first_vid = vehicle_id.split(",")[0].strip()
+    result = await service.pull_telemetry(session_id, api_key, first_vid)
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message", "Failed to connect to ABRP")
+        )
+
+    vehicles = []
+    for v in result.get("vehicles", []):
+        vehicles.append({
+            "vehicle_id": str(v.get("vehicle_id", "")),
+            "name": v.get("name", "Unknown"),
+            "car_model": v.get("car_model", ""),
+            "has_telemetry": v.get("tlm") is not None,
+            "soc": v.get("tlm", {}).get("soc") if v.get("tlm") else None,
+            "is_charging": v.get("tlm", {}).get("is_charging") if v.get("tlm") else None,
+        })
+
+    return {"success": True, "vehicles": vehicles}
+
+
+class ABRPPullSaveRequest(BaseModel):
+    """Request model for selecting which ABRP vehicles to save"""
+    vehicle_ids: list[str]
+
+
+@router.post("/me/abrp/pull/test")
+async def test_abrp_pull(
+    payload: Optional[ABRPPullSaveRequest] = None,
+    user=Depends(get_supabase_user),
+):
+    """
+    Pull telemetry from ABRP using stored credentials, normalize to vehicle format,
+    save selected vehicles (or all with telemetry) with source='abrp'.
+    """
+    from app.services.abrp_pull_service import get_abrp_pull_service
+    from app.storage.vehicle import save_abrp_vehicle
+
+    user_id = user["sub"]
+    local_user = await get_user_by_id(user_id)
+
+    if not local_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    session_id = getattr(local_user, "abrp_pull_session_token", None)
+    api_key = getattr(local_user, "abrp_pull_api_key", None)
+    vehicle_id = getattr(local_user, "abrp_pull_vehicle_ids", None)
+
+    if not session_id or not api_key or not vehicle_id:
+        raise HTTPException(
+            status_code=400,
+            detail="ABRP pull credentials not configured (need session ID, API key, and vehicle ID)"
+        )
+
+    service = get_abrp_pull_service()
+    first_vid = vehicle_id.split(",")[0].strip()
+    result = await service.pull_telemetry(session_id, api_key, first_vid)
+
+    if not result.get("success"):
+        update_abrp_pull_stats(user_id, success=False, error=result.get("message"))
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message", "Failed to pull telemetry from ABRP")
+        )
+
+    vehicles_data = result.get("vehicles", [])
+
+    # Filter to selected vehicle IDs if specified, otherwise save all with telemetry
+    # Empty list = discover only (don't save), None/no payload = save all with telemetry
+    discover_only = payload is not None and payload.vehicle_ids is not None and len(payload.vehicle_ids) == 0
+    selected_ids = set(payload.vehicle_ids) if payload and payload.vehicle_ids else None
+
+    saved_vehicles = []
+    all_vehicles_info = []
+    for v in vehicles_data:
+        vid = str(v.get("vehicle_id", ""))
+        has_tlm = v.get("tlm") is not None
+
+        all_vehicles_info.append({
+            "vehicle_id": vid,
+            "name": v.get("name", "Unknown"),
+            "car_model": v.get("car_model", ""),
+            "has_telemetry": has_tlm,
+            "soc": v.get("tlm", {}).get("soc") if has_tlm else None,
+            "is_charging": v.get("tlm", {}).get("is_charging") if has_tlm else None,
+        })
+
+        # Skip if no telemetry, discover-only mode, or not in selected list
+        if not has_tlm:
+            continue
+        if discover_only:
+            continue
+        if selected_ids and vid not in selected_ids:
+            continue
+
+        vehicle_cache = service.normalize_to_vehicle(v, user_id)
+        if vehicle_cache:
+            saved = await save_abrp_vehicle(vehicle_cache, user_id, vid)
+            if saved:
+                saved_vehicles.append(vid)
+
+    update_abrp_pull_stats(user_id, success=True)
+
+    return {
+        "success": True,
+        "message": f"Pulled telemetry and saved {len(saved_vehicles)} vehicle(s)",
+        "available_vehicles": all_vehicles_info,
+        "saved_vehicles": saved_vehicles,
+    }

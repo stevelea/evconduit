@@ -22,14 +22,57 @@ type Props = {
   purchasedApiTokens: number;
   notifyOffline: boolean;
   notifyLoading: boolean;
-  isSubscribed: boolean;
-  subscribeLoading: boolean;
   onNameSave?: (name: string) => Promise<boolean>;
+  onCountrySave?: (code: string) => Promise<boolean>;
   onToggleNotify?: (checked: boolean) => void;
-  onToggleSubscribe?: (checked: boolean) => void;
   avatarUrl?: string | null;
   nameSaveLoading?: boolean;
+  countrySaveLoading?: boolean;
+  countryCode?: string | null;
 };
+
+// Common country options for EV owners
+const COUNTRY_OPTIONS = [
+  { code: 'AU', name: 'Australia' },
+  { code: 'AT', name: 'Austria' },
+  { code: 'BE', name: 'Belgium' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'CN', name: 'China' },
+  { code: 'CZ', name: 'Czech Republic' },
+  { code: 'DK', name: 'Denmark' },
+  { code: 'EG', name: 'Egypt' },
+  { code: 'FI', name: 'Finland' },
+  { code: 'FR', name: 'France' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'GR', name: 'Greece' },
+  { code: 'HK', name: 'Hong Kong' },
+  { code: 'ID', name: 'Indonesia' },
+  { code: 'IE', name: 'Ireland' },
+  { code: 'IL', name: 'Israel' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'MY', name: 'Malaysia' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'NZ', name: 'New Zealand' },
+  { code: 'NO', name: 'Norway' },
+  { code: 'PL', name: 'Poland' },
+  { code: 'PT', name: 'Portugal' },
+  { code: 'SG', name: 'Singapore' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'CH', name: 'Switzerland' },
+  { code: 'TH', name: 'Thailand' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'US', name: 'United States' },
+  { code: 'UY', name: 'Uruguay' },
+];
+
+function countryCodeToFlag(code: string): string {
+  if (code.length !== 2) return '';
+  return String.fromCodePoint(
+    ...code.toUpperCase().split('').map(c => 127397 + c.charCodeAt(0))
+  );
+}
 
 export default function UserInfoCard({
   userId,
@@ -42,13 +85,13 @@ export default function UserInfoCard({
   purchasedApiTokens,
   notifyOffline,
   notifyLoading,
-  isSubscribed,
-  subscribeLoading,
   onNameSave,
+  onCountrySave,
   onToggleNotify,
-  onToggleSubscribe,
   avatarUrl,
   nameSaveLoading,
+  countrySaveLoading,
+  countryCode,
 }: Props) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(name);
@@ -180,6 +223,26 @@ export default function UserInfoCard({
               {email}
             </a>
           </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>{countryCode ? `${countryCodeToFlag(countryCode)} ` : ''}Country:</span>
+            <select
+              value={countryCode || ''}
+              onChange={async (e) => {
+                if (onCountrySave && e.target.value) {
+                  await onCountrySave(e.target.value);
+                }
+              }}
+              disabled={countrySaveLoading}
+              className="text-sm border border-gray-200 rounded px-1.5 py-0.5 bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">Select country</option>
+              {COUNTRY_OPTIONS.map(c => (
+                <option key={c.code} value={c.code}>
+                  {countryCodeToFlag(c.code)} {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="text-muted-foreground text-xs flex items-center">
             {tier && tier[0].toUpperCase() + tier.slice(1)} User
             {isOnTrial && trialEndsAt && (
@@ -236,27 +299,26 @@ export default function UserInfoCard({
               loading={notifyLoading}
               onToggle={onToggleNotify}
             />
-            <ProfileSettingToggle
-              id="newsletter"
-              label="Subscribed to newsletter"
-              tooltipContent={
-                <>
-                  <strong>Newsletter subscription</strong>
-                  <br />
-                  Get occasional news and feature updates by email.
-                  <br />
-                  Unsubscribe at any time.
-                  <br />
-                  <span className="text-xs text-muted-foreground">
-                    No spam. You control your preferences.
-                  </span>
-                </>
-              }
-              checked={isSubscribed}
-              disabled={false}
-              loading={subscribeLoading}
-              onToggle={onToggleSubscribe}
-            />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Updates &amp; news:</span>
+              <a
+                href="https://discord.com/channels/1274099103537828013/1274100550660788266"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-600 hover:underline"
+              >
+                #software-talk
+              </a>
+              <span className="text-gray-400">|</span>
+              <a
+                href="https://discord.gg/6BzmqfZaAf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-600 hover:underline"
+              >
+                Join Discord
+              </a>
+            </div>
           </div>
         </div>
       </CardContent>

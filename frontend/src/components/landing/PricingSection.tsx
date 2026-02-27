@@ -1,73 +1,94 @@
 // src/components/landing/PricingSection.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useUser } from '@/hooks/useUser';
+import { ExternalLink } from 'lucide-react';
 import NewsBox from './NewsBox';
 import VehicleCapacity from './VehicleCapacity';
 
 export default function PricingSection() {
   const { isLoggedIn, loading } = useUser();
-  const [isFull, setIsFull] = useState(false);
 
-  useEffect(() => {
-    const checkCapacity = async () => {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-        const res = await fetch(`${apiUrl}/public/vehicle-capacity`);
-        if (res.ok) {
-          const data = await res.json();
-          setIsFull(data.is_full === true);
-        }
-      } catch {
-        // ignore
-      }
-    };
-    checkCapacity();
-  }, []);
-
-  const features = [
-    '2 connected devices',
-    '10,000 API calls per month',
+  const enodeFeatures = [
+    'Direct manufacturer API connection',
     'Real-time webhook updates',
     'Home Assistant integration',
     'Charging session history',
-    'Community supported',
+    'Start/stop charging remotely',
+  ];
+
+  const abrpFeatures = [
+    'Connect via ABRP (Enode Link or OBD-II)',
+    'Battery, charging, odometer, SOH',
+    'No Enode slot required',
+    'OBD-II: free ABRP account works',
+    'Auto-merges with Enode data if both linked',
   ];
 
   return (
-    <section className="relative z-20 -mt-100 max-w-3xl mx-auto px-6 py-10 text-center">
+    <section className="relative z-20 -mt-100 max-w-4xl mx-auto px-6 py-10 text-center">
       <h2 className="text-2xl font-bold mb-6 text-white">Free for everyone</h2>
 
-      <div className="relative">
-        {/* Full capacity overlay */}
-        {isFull && (
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Enode card — full */}
+        <div className="relative">
           <div className="absolute inset-0 z-30 flex items-center justify-center rounded-lg bg-black/60 backdrop-blur-sm">
-            <div className="text-center px-6 py-8">
-              <p className="text-4xl mb-3">🚗</p>
-              <h3 className="text-2xl font-bold text-white mb-2">We&apos;re at full capacity</h3>
-              <p className="text-white/80 text-sm max-w-xs mx-auto">
-                All vehicle slots are currently taken. Check back soon or subscribe to our newsletter to be notified when spots open up.
+            <div className="text-center px-4 py-6">
+              <p className="text-3xl mb-2">🚗</p>
+              <h3 className="text-lg font-bold text-white mb-1">Registrations Full</h3>
+              <p className="text-white/80 text-xs max-w-[200px] mx-auto">
+                All Enode vehicle slots are taken. Join Discord for updates.
               </p>
-              <Button className="mt-4" variant="secondary" asChild>
-                <Link href="/contact">Get Notified</Link>
+              <Button className="mt-3" size="sm" variant="secondary" asChild>
+                <a href="https://discord.gg/6BzmqfZaAf" target="_blank" rel="noopener noreferrer">
+                  Join Discord
+                </a>
               </Button>
             </div>
           </div>
-        )}
 
-        <Card className={`border shadow-md bg-white ${isFull ? 'opacity-40' : ''}`}>
-          <CardContent className="py-8 px-6 space-y-6">
+          <Card className="border shadow-md bg-white opacity-40 h-full">
+            <CardContent className="py-6 px-5 space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Via Enode</p>
+                <p className="text-2xl font-bold text-gray-400 mt-1">Enode Link</p>
+                <p className="text-xs text-gray-400 mt-1">Direct manufacturer API</p>
+              </div>
+
+              <ul className="text-sm text-left text-gray-400 space-y-2">
+                {enodeFeatures.map((f) => (
+                  <li key={f} className="flex items-start gap-2">
+                    <span className="mt-0.5">&#10004;</span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Button className="w-full" disabled>Currently Full</Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ABRP card — open */}
+        <Card className="border shadow-md bg-white ring-2 ring-green-400 h-full">
+          <CardContent className="py-6 px-5 space-y-4">
             <div>
-              <p className="text-3xl font-bold text-green-600">Free</p>
-              <p className="text-sm text-gray-500 mt-1">No credit card required</p>
+              <div className="flex items-center justify-center gap-2">
+                <p className="text-xs font-semibold text-green-600 uppercase tracking-wide">Via ABRP</p>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">
+                  Open
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-green-600 mt-1">ABRP Pull</p>
+              <p className="text-xs text-gray-500 mt-1">A Better Route Planner</p>
             </div>
 
-            <ul className="text-sm text-left text-gray-700 space-y-2 max-w-sm mx-auto">
-              {features.map((f) => (
+            <ul className="text-sm text-left text-gray-700 space-y-2">
+              {abrpFeatures.map((f) => (
                 <li key={f} className="flex items-start gap-2">
                   <span className="text-green-500 mt-0.5">&#10004;</span>
                   <span>{f}</span>
@@ -76,21 +97,25 @@ export default function PricingSection() {
             </ul>
 
             {loading ? (
-              <Button className="w-full max-w-xs mx-auto" disabled>
-                Loading...
-              </Button>
+              <Button className="w-full" disabled>Loading...</Button>
             ) : isLoggedIn ? (
-              <Button className="w-full max-w-xs mx-auto" disabled>
-                You&apos;re signed in
-              </Button>
-            ) : isFull ? (
-              <Button className="w-full max-w-xs mx-auto" disabled>
-                Currently Full
-              </Button>
+              <div className="space-y-2">
+                <Button className="w-full" asChild>
+                  <Link href="/profile#abrp-pull">Configure ABRP Pull</Link>
+                </Button>
+                <Link href="/docs/abrp-pull" className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                  Setup guide <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
             ) : (
-              <Button className="w-full max-w-xs mx-auto" asChild>
-                <Link href="/register">Get Started</Link>
-              </Button>
+              <div className="space-y-2">
+                <Button className="w-full" asChild>
+                  <Link href="/register">Get Started</Link>
+                </Button>
+                <Link href="/docs/abrp-pull" className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                  Setup guide <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
             )}
           </CardContent>
         </Card>

@@ -73,7 +73,7 @@ export default function RegisterPage() {
             </>
           ) : (
             <>{capacityFull
-              ? 'All vehicle slots are currently taken. Check back soon or subscribe to be notified when spots open up.'
+              ? 'All vehicle slots are currently taken. Join the Discord for updates on when spots open up.'
               : 'EVConduit is currently under development. You\u0027ll be the first to know when we launch.'
           }</>
           )}

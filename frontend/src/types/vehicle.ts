@@ -55,4 +55,6 @@ export type Vehicle = {
   };
 
   scopes?: string[];
+  source?: 'enode' | 'abrp';
+  abrp_extra?: Record<string, number | string>;
 };

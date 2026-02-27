@@ -220,7 +220,7 @@ async def get_user_by_id(user_id: str) -> User | None:
     """
     try:
         response = supabase.table("users") \
-            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at, pushover_user_key, pushover_enabled, pushover_events, abrp_token, abrp_enabled") \
+            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at, pushover_user_key, pushover_enabled, pushover_events, abrp_token, abrp_enabled, abrp_pull_session_token, abrp_pull_api_key, abrp_pull_vehicle_ids, abrp_pull_enabled, country_code") \
             .eq("id", user_id) \
             .maybe_single() \
             .execute()
@@ -637,6 +637,16 @@ async def get_abrp_user_count() -> int:
         return 0
 
 
+async def get_abrp_pull_user_count() -> int:
+    """Returns the number of users with ABRP Pull enabled."""
+    try:
+        res = supabase.table("users").select("id", count="exact").eq("abrp_pull_enabled", True).execute()
+        return res.count
+    except Exception as e:
+        logger.error(f"[❌ get_abrp_pull_user_count] {e}")
+        return 0
+
+
 async def get_users_by_country() -> list[dict]:
     """
     Returns users grouped by country with count.
@@ -989,6 +999,96 @@ def update_abrp_push_stats(user_id: str, success: bool, error: str | None = None
         logger.debug(f"[📊] Updated ABRP push stats for {user_id}: success={success}, error={error}")
     except Exception as e:
         logger.error(f"[❌ update_abrp_push_stats] {e}")
+
+
+def get_abrp_pull_stats(user_id: str) -> dict | None:
+    """Retrieves ABRP pull stats for a user including masked credentials and pull counts."""
+    try:
+        result = supabase.table("users") \
+            .select("abrp_pull_session_token, abrp_pull_api_key, abrp_pull_vehicle_ids, abrp_pull_enabled, abrp_pull_success_count, abrp_pull_fail_count, abrp_pull_last_pull_at, abrp_pull_last_error") \
+            .eq("id", user_id) \
+            .maybe_single() \
+            .execute()
+
+        if result.data:
+            def _mask(val):
+                if not val:
+                    return None
+                return f"{'*' * (len(val) - 4)}{val[-4:]}" if len(val) > 4 else "****"
+
+            return {
+                "abrp_pull_session_token": _mask(result.data.get("abrp_pull_session_token")),
+                "abrp_pull_api_key": _mask(result.data.get("abrp_pull_api_key")),
+                "abrp_pull_vehicle_ids": result.data.get("abrp_pull_vehicle_ids"),
+                "abrp_pull_enabled": result.data.get("abrp_pull_enabled") or False,
+                "pull_success_count": result.data.get("abrp_pull_success_count") or 0,
+                "pull_fail_count": result.data.get("abrp_pull_fail_count") or 0,
+                "last_pull_at": result.data.get("abrp_pull_last_pull_at"),
+                "last_error": result.data.get("abrp_pull_last_error"),
+            }
+        return None
+    except Exception as e:
+        logger.error(f"[❌ get_abrp_pull_stats] {e}")
+        return None
+
+
+def update_abrp_pull_stats(user_id: str, success: bool, error: str | None = None) -> int:
+    """Update ABRP pull statistics for a user.
+
+    Returns the new consecutive fail count (0 on success).
+    """
+    try:
+        result = supabase.table("users") \
+            .select("abrp_pull_success_count, abrp_pull_fail_count, abrp_pull_consecutive_fails") \
+            .eq("id", user_id) \
+            .maybe_single() \
+            .execute()
+
+        if not result.data:
+            logger.warning(f"[⚠️] update_abrp_pull_stats: User {user_id} not found")
+            return 0
+
+        current_success = result.data.get("abrp_pull_success_count") or 0
+        current_fail = result.data.get("abrp_pull_fail_count") or 0
+        consecutive_fails = result.data.get("abrp_pull_consecutive_fails") or 0
+
+        update_data = {
+            "abrp_pull_last_pull_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if success:
+            update_data["abrp_pull_success_count"] = current_success + 1
+            update_data["abrp_pull_last_error"] = None
+            update_data["abrp_pull_consecutive_fails"] = 0
+            consecutive_fails = 0
+        else:
+            consecutive_fails += 1
+            update_data["abrp_pull_fail_count"] = current_fail + 1
+            update_data["abrp_pull_consecutive_fails"] = consecutive_fails
+            if error:
+                update_data["abrp_pull_last_error"] = error
+
+        supabase.table("users") \
+            .update(update_data) \
+            .eq("id", user_id) \
+            .execute()
+
+        logger.debug(f"[📊] Updated ABRP pull stats for {user_id}: success={success}, consecutive_fails={consecutive_fails}")
+        return consecutive_fails
+    except Exception as e:
+        logger.error(f"[❌ update_abrp_pull_stats] {e}")
+        return 0
+
+
+def disable_abrp_pull(user_id: str) -> None:
+    """Disable ABRP pull for a user (e.g. after credential expiry)."""
+    try:
+        supabase.table("users") \
+            .update({"abrp_pull_enabled": False}) \
+            .eq("id", user_id) \
+            .execute()
+        logger.info(f"[🔒] Disabled ABRP pull for user {user_id}")
+    except Exception as e:
+        logger.error(f"[❌ disable_abrp_pull] {e}")
 
 
 def get_abrp_stats(user_id: str) -> dict | None:

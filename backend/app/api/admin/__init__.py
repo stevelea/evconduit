@@ -13,6 +13,7 @@ from .email import router as email_router
 from .metrics import router as metrics_router
 from .enode_accounts import router as enode_accounts_router
 from .xcombo import router as xcombo_router
+from .useful_links import router as useful_links_router
 
 routers = [
     # admin_router,
@@ -28,4 +29,5 @@ routers = [
     metrics_router,
     enode_accounts_router,
     xcombo_router,
+    useful_links_router,
 ]

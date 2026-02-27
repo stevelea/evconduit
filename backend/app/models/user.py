@@ -23,6 +23,11 @@ class User(BaseModel):
     pushover_user_key: Optional[str] = None
     pushover_enabled: bool = False
     pushover_events: Optional[dict] = None
-    # ABRP (A Better Route Planner) settings
+    # ABRP (A Better Route Planner) push settings
     abrp_token: Optional[str] = None
     abrp_enabled: bool = False
+    # ABRP pull settings (read telemetry FROM ABRP)
+    abrp_pull_session_token: Optional[str] = None
+    abrp_pull_api_key: Optional[str] = None
+    abrp_pull_vehicle_ids: Optional[str] = None
+    abrp_pull_enabled: bool = False

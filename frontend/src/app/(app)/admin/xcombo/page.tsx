@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { Loader2, Check, X, Trash2, ExternalLink, Pencil, Save, RefreshCw } from 'lucide-react';
+import { Loader2, Check, X, Trash2, ExternalLink, Pencil, Save, RefreshCw, Copy } from 'lucide-react';
 import { authFetch } from '@/lib/authFetch';
 
 type XComboEntry = {
@@ -202,6 +202,7 @@ export default function AdminXComboPage() {
           <table className="min-w-full text-sm text-left">
             <thead className="bg-gray-100 text-gray-700">
               <tr>
+                <th className="px-4 py-2">Scene ID</th>
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Code</th>
                 <th className="px-4 py-2">Category</th>
@@ -217,6 +218,22 @@ export default function AdminXComboPage() {
                 <tr key={entry.id} className="border-t hover:bg-gray-50">
                   {editingId === entry.id ? (
                     <>
+                      <td className="px-4 py-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 font-mono text-xs text-gray-400 hover:text-gray-700"
+                          title={entry.scene_id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(entry.scene_id);
+                            toast.success('Scene ID copied');
+                          }}
+                        >
+                          {entry.scene_id.slice(0, 8)}...
+                          <Copy className="h-3 w-3 ml-1" />
+                        </Button>
+                      </td>
                       <td className="px-4 py-2">
                         <Input
                           value={editFields.name || ''}
@@ -307,6 +324,22 @@ export default function AdminXComboPage() {
                     </>
                   ) : (
                     <>
+                      <td className="px-4 py-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 font-mono text-xs text-gray-400 hover:text-gray-700"
+                          title={entry.scene_id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(entry.scene_id);
+                            toast.success('Scene ID copied');
+                          }}
+                        >
+                          {entry.scene_id.slice(0, 8)}...
+                          <Copy className="h-3 w-3 ml-1" />
+                        </Button>
+                      </td>
                       <td className="px-4 py-2 font-medium">{entry.name}</td>
                       <td className="px-4 py-2 font-mono text-xs text-gray-500">
                         {entry.xcombo_code || '—'}

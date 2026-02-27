@@ -2,8 +2,9 @@
 
 import { useRef, useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
-import { RefreshCw, AlertTriangle } from "lucide-react";
+import { RefreshCw, AlertTriangle, Download } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/authFetch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,11 @@ export default function DashboardPage() {
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshingAbrp, setRefreshingAbrp] = useState(false);
   const [haError, setHaError] = useState<string | null>(null);
+  const [hasAbrpPull, setHasAbrpPull] = useState(false);
   const justClosedRef = useRef(false);
+  const router = useRouter();
 
   // Hämta fordon från backend
   const fetchVehicles = useCallback(async () => {
@@ -72,13 +76,26 @@ export default function DashboardPage() {
     }
   }, [accessToken, user]);
 
+  // Check if user has ABRP pull credentials configured
+  const checkAbrpPull = useCallback(async () => {
+    if (!accessToken) return;
+    const { data } = await authFetch("/me/abrp/pull", {
+      method: "GET",
+      accessToken,
+    });
+    if (data) {
+      setHasAbrpPull(!!(data.abrp_pull_session_token && data.abrp_pull_api_key));
+    }
+  }, [accessToken]);
+
   // Hämta vid mount/user/token ändring
   useEffect(() => {
     if (accessToken) {
       fetchVehicles();
       checkHaStatus();
+      checkAbrpPull();
     }
-  }, [accessToken, fetchVehicles, checkHaStatus]);
+  }, [accessToken, fetchVehicles, checkHaStatus, checkAbrpPull]);
 
   // Refresh vehicles from Enode (bypasses webhook, polls directly)
   const handleRefresh = useCallback(async () => {
@@ -103,6 +120,30 @@ export default function DashboardPage() {
     }
     setRefreshing(false);
   }, [accessToken, refreshing, fetchVehicles]);
+
+  // Refresh vehicles from ABRP
+  const handleRefreshAbrp = useCallback(async () => {
+    if (!accessToken || refreshingAbrp) return;
+    setRefreshingAbrp(true);
+
+    const { data, error } = await authFetch("/me/vehicles/refresh-abrp", {
+      method: "POST",
+      accessToken,
+    });
+
+    if (error) {
+      toast.error(error.message || "Failed to refresh ABRP data");
+    } else {
+      const count = data?.vehicles_updated ?? 0;
+      if (count > 0) {
+        toast.success(`Refreshed ${count} vehicle(s) from ABRP`);
+        fetchVehicles();
+      } else {
+        toast.info("No ABRP vehicle data to update");
+      }
+    }
+    setRefreshingAbrp(false);
+  }, [accessToken, refreshingAbrp, fetchVehicles]);
 
   // Unlink triggers fetch
   const openUnlinkDialog = useCallback((vendor: string) => {
@@ -178,6 +219,20 @@ export default function DashboardPage() {
           <LinkVehicleDialog accessToken={accessToken} hasEnodeAccount={!!mergedUser?.enode_account_id} />
           <Button
             variant="outline"
+            onClick={() => {
+              router.push("/profile");
+              // Delay scroll to let the page render
+              setTimeout(() => {
+                document.getElementById("abrp-pull")?.scrollIntoView({ behavior: "smooth" });
+              }, 500);
+            }}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" />
+            Link Vehicle with ABRP
+          </Button>
+          <Button
+            variant="outline"
             onClick={handleRefresh}
             disabled={refreshing || vehiclesLoading}
             className="gap-2"
@@ -185,6 +240,17 @@ export default function DashboardPage() {
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? "Refreshing..." : "Refresh from Enode"}
           </Button>
+          {hasAbrpPull && (
+            <Button
+              variant="outline"
+              onClick={handleRefreshAbrp}
+              disabled={refreshingAbrp || vehiclesLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshingAbrp ? "animate-spin" : ""}`} />
+              {refreshingAbrp ? "Refreshing..." : "Refresh from ABRP"}
+            </Button>
+          )}
         </div>
 
         {/* User Updates */}

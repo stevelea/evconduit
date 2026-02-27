@@ -17,6 +17,8 @@ import {
   Zap,
   HelpCircle,
   Sparkles,
+  Link2,
+  Download,
 } from 'lucide-react';
 
 export type NavigationItem = {
@@ -47,6 +49,7 @@ export const navigation: NavigationGroup[] = [
       { title: 'Integration Guide', href: '/integration-guide', icon: BookOpen }, /* Hardcoded string */
       { title: 'HA API', href: '/docs/ha-api', icon: Terminal }, /* Hardcoded string */
       { title: 'Enode Share (PIF)', href: '/docs/enode-setup', icon: Server }, /* Hardcoded string */
+      { title: 'ABRP Pull Guide', href: '/docs/abrp-pull', icon: Download },
       { title: 'Capabilities', href: '/docs/capabilities', icon: Zap }, /* Hardcoded string */
       { title: 'Troubleshooting', href: '/docs/troubleshooting', icon: HelpCircle }, /* Hardcoded string */
       { title: 'Release Notes', href: '/docs/updates', icon: Sparkles }, /* Hardcoded string */
@@ -67,6 +70,7 @@ export const navigation: NavigationGroup[] = [
       { title: 'Logs', href: '/admin/logs', icon: FileText, adminOnly: true }, /* Hardcoded string */
       { title: 'Finance', href: '/admin/finance', icon: BarChart2, adminOnly: true }, /* Hardcoded string */
       { title: 'XCombo', href: '/admin/xcombo', icon: Zap, adminOnly: true },
+      { title: 'Useful Links', href: '/admin/useful-links', icon: Link2, adminOnly: true },
     ],
   },
 ];

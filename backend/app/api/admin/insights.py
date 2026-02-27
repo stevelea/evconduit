@@ -1,7 +1,7 @@
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException
-from app.storage.user import get_total_user_count, get_new_user_count, get_ha_user_count, get_abrp_user_count, get_users_by_country
-from app.storage.vehicle import get_total_vehicle_count, get_new_vehicle_count, get_vehicles_by_country, get_vehicles_by_model
+from app.storage.user import get_total_user_count, get_new_user_count, get_ha_user_count, get_abrp_user_count, get_abrp_pull_user_count, get_users_by_country
+from app.storage.vehicle import get_total_vehicle_count, get_new_vehicle_count, get_vehicles_by_country, get_vehicles_by_model, get_abrp_pull_vehicle_count
 from app.storage.invoice import get_total_revenue, get_monthly_revenue, get_yearly_revenue
 from app.storage.subscription import count_subscriptions_by_plan, count_users_on_trial
 from app.auth.supabase_auth import get_supabase_user
@@ -191,6 +191,8 @@ async def get_all_insights(user=Depends(require_admin)):
         get_abrp_user_count(),
         get_users_by_country(),
         get_vehicles_by_model(),
+        get_abrp_pull_user_count(),
+        get_abrp_pull_vehicle_count(),
         return_exceptions=True
     )
 
@@ -215,6 +217,8 @@ async def get_all_insights(user=Depends(require_admin)):
         "abrp_users",
         "users_by_country",
         "vehicles_by_model",
+        "abrp_pull_users",
+        "abrp_pull_vehicles",
     ]
 
     response = {}

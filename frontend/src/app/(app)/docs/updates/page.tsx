@@ -15,6 +15,39 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.02.27',
+    date: 'February 27, 2026',
+    highlights: 'ABRP Pull integration with comprehensive telemetry, country profile field, and HA push fix',
+    features: [
+      'ABRP Pull integration — use A Better Route Planner as an alternative vehicle data source, bypassing Enode connection limits',
+      'ABRP-sourced vehicles appear in the dashboard with an ABRP badge alongside Enode vehicles',
+      'Test Pull button to verify ABRP credentials and preview raw telemetry data',
+      'Background ABRP polling — enabled vehicles are automatically refreshed every 5 minutes',
+      'Vehicle discovery — browse all vehicles in your ABRP session and select which to pull',
+      'Comprehensive ABRP telemetry — captures battery capacity, estimated range, HVAC power/setpoint, cabin temp, tire pressures, heading, state of energy, and parked status',
+      'Country field on user profile for regional analytics',
+      'ABRP Pull vehicle count and user count on admin dashboard',
+      'Auto-disable ABRP pull after 3 consecutive failures with email notification',
+      'ABRP Pull setup guide with step-by-step credential extraction instructions',
+    ],
+    fixes: [
+      'Fixed Home Assistant rejecting updates when both Enode and ABRP vehicles are linked — only Enode vehicles now push to HA',
+    ],
+    improvements: [
+      'ABRP car model code parsed into proper brand, model, year, battery size, and drivetrain',
+      'Vehicle detail views (user and admin) now show all available ABRP telemetry fields',
+    ],
+  },
+  {
+    version: '2026.02.25',
+    date: 'February 25, 2026',
+    highlights: 'Admin-managed useful links banner on the landing page',
+    features: [
+      'Admin-managed Useful Links - landing page community tools banner is now dynamically driven from the admin panel',
+      'Useful Links admin page - add, edit, reorder, toggle visibility, and delete banner links without code changes',
+    ],
+  },
+  {
     version: '2026.02.19',
     date: 'February 19, 2026',
     highlights: 'Multi-Enode account support, Pay It Forward guide, simplified pricing, and capacity management',

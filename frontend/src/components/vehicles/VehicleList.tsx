@@ -156,7 +156,12 @@ function VehicleList({
                 return (
                   <tr key={vehicle.id} className="border-b">
                     <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900">{displayName}</div>
+                      <div className="font-semibold text-gray-900">
+                        {displayName}
+                        {vehicle.source === 'abrp' && (
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP</span>
+                        )}
+                      </div>
                       <div className="text-xs text-gray-400">
                         Vehicle ID: {vehicle.db_id}
                       </div>
@@ -235,7 +240,12 @@ function VehicleList({
               key={vehicle.id}
               className="rounded-xl border bg-white p-4 flex flex-col gap-2 shadow-sm"
             >
-              <div className="font-semibold text-lg text-gray-900">{displayName}</div>
+              <div className="font-semibold text-lg text-gray-900">
+                {displayName}
+                {vehicle.source === 'abrp' && (
+                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP</span>
+                )}
+              </div>
               <div className="text-xs text-gray-400">Vehicle ID: {vehicle.db_id}</div>
               <div className="text-xs text-gray-400 mb-1">Last seen: {formatLastSeen(vehicle.lastSeen)}</div>
               <div className="text-sm text-gray-600 mb-1">

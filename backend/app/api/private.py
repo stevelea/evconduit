@@ -81,33 +81,32 @@ async def get_user_vehicles(user=Depends(get_supabase_user)):
         except Exception as e:
             logger.warning(f"[⚠️ cache] Failed to parse updated_at: {e}")
 
-    try:
-        account = await get_enode_account_for_user(user_id)
-        if not account:
-            raise HTTPException(status_code=500, detail="No Enode account assigned to user")
-        fresh_vehicles = await get_user_vehicles_enode(user_id, account)
-        logger.info(f"🔄 Fetched {len(fresh_vehicles)} fresh vehicle(s) from Enode")
+    # Try to refresh from Enode (skip if user has no Enode account — e.g. ABRP-only users)
+    account = await get_enode_account_for_user(user_id)
+    if account:
+        try:
+            fresh_vehicles = await get_user_vehicles_enode(user_id, account)
+            logger.info(f"🔄 Fetched {len(fresh_vehicles)} fresh vehicle(s) from Enode")
 
-        for vehicle in fresh_vehicles:
-            vehicle["userId"] = user_id
-            await save_vehicle_data_with_client(vehicle)
+            for vehicle in fresh_vehicles:
+                vehicle["userId"] = user_id
+                await save_vehicle_data_with_client(vehicle)
 
-        logger.info(f"💾 Saved {len(fresh_vehicles)} vehicle(s) to Supabase")
+            logger.info(f"💾 Saved {len(fresh_vehicles)} vehicle(s) to Supabase")
+        except Exception as e:
+            logger.error(f"[❌ fetch_fresh] Failed to fetch from Enode: {e}")
+    else:
+        logger.info(f"ℹ️ User {user_id} has no Enode account, serving cached/ABRP vehicles only")
 
-        # Fetch the cache again and return from the newly populated cache
-        cached_data = get_all_cached_vehicles(user_id)
-        logger.debug(f"[DEBUG] post-save cached_data: {cached_data}")
-        vehicles_from_cache = []
-        for row in cached_data:
-            vehicle_obj = json.loads(row["vehicle_cache"]) if isinstance(row["vehicle_cache"], str) else row["vehicle_cache"]
-            vehicle_obj["db_id"] = row["id"]
-            vehicles_from_cache.append(vehicle_obj)
-        logger.info(f"✅ Returning {len(vehicles_from_cache)} vehicles (after fresh fetch)")
-        return vehicles_from_cache
-
-    except Exception as e:
-        logger.error(f"[❌ fetch_fresh] Failed to fetch or save vehicles: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch vehicles")
+    # Return all cached vehicles (Enode + ABRP)
+    cached_data = get_all_cached_vehicles(user_id)
+    vehicles_from_cache = []
+    for row in cached_data:
+        vehicle_obj = json.loads(row["vehicle_cache"]) if isinstance(row["vehicle_cache"], str) else row["vehicle_cache"]
+        vehicle_obj["db_id"] = row["id"]
+        vehicles_from_cache.append(vehicle_obj)
+    logger.info(f"✅ Returning {len(vehicles_from_cache)} vehicles")
+    return vehicles_from_cache
         
 @router.get("/vehicles/{vehicle_id}")
 async def get_vehicle_by_id(
