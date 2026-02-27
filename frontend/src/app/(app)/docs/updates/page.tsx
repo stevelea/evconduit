@@ -30,6 +30,8 @@ const releases: ReleaseNote[] = [
       'Auto-disable ABRP pull after 3 consecutive failures with email notification',
       'ABRP API setup guide with token-based and legacy credential instructions',
       'Updated landing page showing Enode registrations full with ABRP as open alternative',
+      'ABRP-only users get vehicle data pushed to Home Assistant automatically — no Enode connection required',
+      'Home Assistant integration supports 15 new ABRP sensors: battery health, voltage, current, temperatures, tire pressures, speed, elevation, and more',
     ],
     fixes: [
       'Fixed Home Assistant rejecting updates when both Enode and ABRP vehicles are linked — only Enode vehicles now push to HA',

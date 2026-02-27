@@ -6,13 +6,16 @@ for all users with abrp_pull_enabled = True. Saves updated vehicle
 data to the vehicles table with source='abrp'.
 """
 import asyncio
+import copy
 import logging
 from datetime import datetime, timezone
+
+import httpx
 
 from app.lib.supabase import get_supabase_admin_client
 from app.services.abrp_pull_service import get_abrp_pull_service
 from app.storage.vehicle import save_abrp_vehicle
-from app.storage.user import update_abrp_pull_stats, disable_abrp_pull, get_user_by_id
+from app.storage.user import update_abrp_pull_stats, disable_abrp_pull, get_user_by_id, get_ha_webhook_settings, update_ha_push_stats
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +93,9 @@ async def pull_abrp_for_user(user: dict) -> int:
         vid.strip() for vid in vehicle_ids_str.split(",") if vid.strip()
     )
 
+    # Check if user has Enode vehicles — if not, we push ABRP data to HA
+    has_enode_vehicles = await _user_has_enode_vehicles(user_id)
+
     saved_count = 0
     for v in result.get("vehicles", []):
         vid = str(v.get("vehicle_id", ""))
@@ -104,13 +110,89 @@ async def pull_abrp_for_user(user: dict) -> int:
             saved = await save_abrp_vehicle(vehicle_cache, user_id, vid)
             if saved:
                 saved_count += 1
-                # NOTE: We do NOT push ABRP vehicles to Home Assistant.
-                # HA webhook is configured with a specific Enode vehicle ID,
-                # and pushing ABRP data (with a different vehicle ID) causes
-                # HA configuration errors.
+                # Push ABRP data to HA only if user has no Enode vehicles
+                # (if they have Enode, cross-populate enriches the Enode vehicle
+                # which gets pushed to HA via the normal Enode webhook flow)
+                if not has_enode_vehicles:
+                    await _push_abrp_to_ha(vehicle_cache, user_id, vid)
 
     update_abrp_pull_stats(user_id, success=True)
     return saved_count
+
+
+async def _user_has_enode_vehicles(user_id: str) -> bool:
+    """Check if a user has any Enode-sourced vehicles."""
+    supabase = get_supabase_admin_client()
+    try:
+        result = (
+            supabase.table("vehicles")
+            .select("id")
+            .eq("user_id", user_id)
+            .neq("source", "abrp")
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as e:
+        logger.error(f"[ABRP Poll] Failed to check Enode vehicles for user {user_id}: {e}")
+        return False
+
+
+async def _push_abrp_to_ha(vehicle_cache: dict, user_id: str, abrp_vehicle_id: str) -> None:
+    """Push ABRP vehicle data to Home Assistant for users without Enode vehicles."""
+    settings = get_ha_webhook_settings(user_id)
+    if not settings or not settings.get("ha_webhook_id") or not settings.get("ha_external_url"):
+        return
+
+    # Look up internal DB vehicle ID for the ABRP vehicle
+    supabase = get_supabase_admin_client()
+    try:
+        result = (
+            supabase.table("vehicles")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("vehicle_id", abrp_vehicle_id)
+            .eq("source", "abrp")
+            .maybe_single()
+            .execute()
+        )
+        internal_id = result.data.get("id") if result.data else None
+    except Exception:
+        internal_id = None
+
+    # Build event in the same format as Enode webhook events
+    ha_event = copy.deepcopy(vehicle_cache)
+    event = {"vehicle": ha_event}
+
+    if internal_id:
+        event["vehicleId"] = internal_id
+        ha_event["id"] = internal_id
+
+    # Ensure displayName is set
+    info = ha_event.get("information", {})
+    if not info.get("displayName"):
+        brand = info.get("brand", "")
+        model = info.get("model", "")
+        fallback_name = f"{brand} {model}".strip()
+        if fallback_name:
+            ha_event.setdefault("information", {})["displayName"] = fallback_name
+
+    url = f"{settings['ha_external_url'].rstrip('/')}/api/webhook/{settings['ha_webhook_id']}"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=event, timeout=10.0)
+            resp.raise_for_status()
+            response_text = resp.text
+
+            if "ignored - different vehicle" in response_text.lower():
+                logger.warning(f"[ABRP→HA] Vehicle ID mismatch for user {user_id}")
+                update_ha_push_stats(user_id, success=False, error="vehicle_id_mismatch")
+            else:
+                logger.info(f"[ABRP→HA] Pushed ABRP vehicle to HA for user {user_id}: HTTP {resp.status_code}")
+                update_ha_push_stats(user_id, success=True)
+    except Exception as e:
+        logger.error(f"[ABRP→HA] Failed to push to HA for user {user_id}: {e}")
+        update_ha_push_stats(user_id, success=False, error=str(e))
 
 
 async def poll_all_abrp_users() -> dict:

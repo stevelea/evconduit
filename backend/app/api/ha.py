@@ -323,8 +323,9 @@ async def get_vehicle_status(vehicle_id: str, user: User = Depends(get_api_key_u
     vendor = cache.get("vendor")
     smart_charging_policy = cache.get("smartChargingPolicy", {})
     capabilities = cache.get("capabilities", {})
+    abrp_extra = cache.get("abrp_extra", {})
 
-    return {
+    result = {
         "vehicleName": f"{info.get('brand', '')} {info.get('model', '')}",
         "isReachable": is_reachable,
         "chargeState": charge,
@@ -337,6 +338,11 @@ async def get_vehicle_status(vehicle_id: str, user: User = Depends(get_api_key_u
         "capabilities": capabilities,
         "lastSeen": last_seen,
     }
+
+    if abrp_extra:
+        result["abrp_extra"] = abrp_extra
+
+    return result
 
 # -------------------------------------------------------------------
 # Pydantic model for charging action
