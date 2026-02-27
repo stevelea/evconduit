@@ -1005,7 +1005,7 @@ def get_abrp_pull_stats(user_id: str) -> dict | None:
     """Retrieves ABRP pull stats for a user including masked credentials and pull counts."""
     try:
         result = supabase.table("users") \
-            .select("abrp_pull_session_token, abrp_pull_api_key, abrp_pull_vehicle_ids, abrp_pull_enabled, abrp_pull_success_count, abrp_pull_fail_count, abrp_pull_last_pull_at, abrp_pull_last_error") \
+            .select("abrp_pull_user_token, abrp_pull_vehicle_ids, abrp_pull_enabled, abrp_pull_success_count, abrp_pull_fail_count, abrp_pull_last_pull_at, abrp_pull_last_error") \
             .eq("id", user_id) \
             .maybe_single() \
             .execute()
@@ -1017,8 +1017,7 @@ def get_abrp_pull_stats(user_id: str) -> dict | None:
                 return f"{'*' * (len(val) - 4)}{val[-4:]}" if len(val) > 4 else "****"
 
             return {
-                "abrp_pull_session_token": _mask(result.data.get("abrp_pull_session_token")),
-                "abrp_pull_api_key": _mask(result.data.get("abrp_pull_api_key")),
+                "abrp_pull_user_token": _mask(result.data.get("abrp_pull_user_token")),
                 "abrp_pull_vehicle_ids": result.data.get("abrp_pull_vehicle_ids"),
                 "abrp_pull_enabled": result.data.get("abrp_pull_enabled") or False,
                 "pull_success_count": result.data.get("abrp_pull_success_count") or 0,

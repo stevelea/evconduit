@@ -84,7 +84,7 @@ export default function DashboardPage() {
       accessToken,
     });
     if (data) {
-      setHasAbrpPull(!!(data.abrp_pull_session_token && data.abrp_pull_api_key));
+      setHasAbrpPull(!!data.abrp_pull_user_token);
     }
   }, [accessToken]);
 

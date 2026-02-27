@@ -17,10 +17,10 @@ export default function AbrpPullGuidePage() {
         <div className="flex items-start gap-2">
           <Download className="w-5 h-5 text-indigo-500 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="font-semibold text-indigo-800">What is ABRP Pull?</p>
+            <p className="font-semibold text-indigo-800">What is ABRP API?</p>
             <p className="text-sm text-indigo-700 mt-1">
               EVConduit normally connects to your vehicle through <strong>Enode</strong>, which
-              has limited free capacity (5 vehicles per account). ABRP Pull is an alternative
+              has limited free capacity (5 vehicles per account). ABRP API is an alternative
               that reads your vehicle&apos;s telemetry data directly from{' '}
               <a
                 href="https://abetterrouteplanner.com"
@@ -81,7 +81,7 @@ export default function AbrpPullGuidePage() {
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-4">
           <p className="text-sm text-amber-800">
             <strong>Note:</strong> GPS location is generally <strong>not available</strong> through
-            ABRP Pull. Location data shown on the ABRP website comes from your phone&apos;s browser,
+            ABRP API. Location data shown on the ABRP website comes from your phone&apos;s browser,
             not from the vehicle API.
           </p>
         </div>
@@ -105,7 +105,6 @@ export default function AbrpPullGuidePage() {
             </a>{' '}
             with your vehicle connected as a live data source (see below)
           </li>
-          <li>A desktop/laptop computer with a web browser (to extract credentials)</li>
         </ul>
       </section>
 
@@ -148,11 +147,11 @@ export default function AbrpPullGuidePage() {
         </p>
       </section>
 
-      {/* Step 1 */}
+      {/* Step 1 - Token based (primary) */}
       <section className="mb-10">
         <div className="flex items-center gap-3 mb-4">
           <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">1</span>
-          <h2 className="text-xl font-semibold text-gray-800">Get Your ABRP Session Token</h2>
+          <h2 className="text-xl font-semibold text-gray-800">Get Your ABRP Token</h2>
         </div>
         <div className="ml-11 space-y-3 text-gray-700">
           <p>
@@ -166,20 +165,18 @@ export default function AbrpPullGuidePage() {
               abetterrouteplanner.com
               <ExternalLink className="w-3 h-3" />
             </a>{' '}
-            in your browser, then extract the session token from browser Developer Tools:
+            and get your user token from your account settings:
           </p>
           <ol className="list-decimal list-inside space-y-2">
-            <li>Open <strong>Developer Tools</strong> (press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">F12</kbd> or right-click → Inspect)</li>
-            <li>Go to the <strong>Network</strong> tab</li>
-            <li>In the filter bar, type <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">get_tlm</code></li>
-            <li>Refresh the ABRP page or wait for a request to appear</li>
-            <li>Click on the <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">get_tlm</code> request</li>
-            <li>In the <strong>Request Payload</strong> (or Body), find <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">session_id</code> — this is your <strong>Session Token</strong></li>
+            <li>Click your <strong>profile icon</strong> → <strong>Settings</strong></li>
+            <li>Look for <strong>Integrations</strong> or <strong>API Tokens</strong></li>
+            <li>Copy your <strong>user token</strong></li>
           </ol>
-          <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm mt-2">
-            <span className="text-gray-500">{`{ "session_id": "`}</span>
-            <span className="text-indigo-600 font-semibold">410501173</span>
-            <span className="text-gray-500">{`", "wakeup_vehicle_id": ... }`}</span>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
+            <p className="text-sm text-green-800">
+              This is the recommended method. Your token does not expire and gives EVConduit
+              official API access to read your vehicle telemetry.
+            </p>
           </div>
         </div>
       </section>
@@ -188,46 +185,6 @@ export default function AbrpPullGuidePage() {
       <section className="mb-10">
         <div className="flex items-center gap-3 mb-4">
           <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">2</span>
-          <h2 className="text-xl font-semibold text-gray-800">Get Your ABRP API Key</h2>
-        </div>
-        <div className="ml-11 space-y-3 text-gray-700">
-          <p>From the same network request in Developer Tools:</p>
-          <ol className="list-decimal list-inside space-y-2">
-            <li>Click on the <strong>Headers</strong> tab for the <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">get_tlm</code> request</li>
-            <li>Find the <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">Authorization</code> header</li>
-            <li>Copy the value after <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">APIKEY </code> — this is your <strong>API Key</strong></li>
-          </ol>
-          <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm mt-2">
-            <span className="text-gray-500">Authorization: APIKEY </span>
-            <span className="text-indigo-600 font-semibold">a1b2c3d4-e5f6-7890-abcd-ef1234567890</span>
-          </div>
-        </div>
-      </section>
-
-      {/* Step 3 */}
-      <section className="mb-10">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">3</span>
-          <h2 className="text-xl font-semibold text-gray-800">Get Your Vehicle ID</h2>
-        </div>
-        <div className="ml-11 space-y-3 text-gray-700">
-          <p>From the same network request:</p>
-          <ol className="list-decimal list-inside space-y-2">
-            <li>In the <strong>Request Payload</strong>, find <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">wakeup_vehicle_id</code></li>
-            <li>This is your ABRP <strong>Vehicle ID</strong> (a numeric value)</li>
-          </ol>
-          <div className="bg-gray-50 rounded-lg p-4 font-mono text-sm mt-2">
-            <span className="text-gray-500">{`{ "session_id": "...", "wakeup_vehicle_id": `}</span>
-            <span className="text-indigo-600 font-semibold">1007787500288</span>
-            <span className="text-gray-500">{` }`}</span>
-          </div>
-        </div>
-      </section>
-
-      {/* Step 4 */}
-      <section className="mb-10">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm">4</span>
           <h2 className="text-xl font-semibold text-gray-800">Configure in EVConduit</h2>
         </div>
         <div className="ml-11 space-y-3 text-gray-700">
@@ -235,18 +192,19 @@ export default function AbrpPullGuidePage() {
             <li>
               Go to your{' '}
               <a href="/profile#abrp-pull" className="text-indigo-600 hover:underline">
-                EVConduit Profile → ABRP Pull Settings
+                EVConduit Profile → ABRP API Settings
               </a>
             </li>
-            <li>Enter your <strong>Session Token</strong>, <strong>API Key</strong>, and <strong>Vehicle ID</strong></li>
+            <li>Paste your <strong>ABRP Token</strong></li>
             <li>Click <strong>Save</strong></li>
-            <li>Click <strong>Test Pull</strong> to verify the connection works</li>
-            <li>If the test succeeds, toggle <strong>Enable ABRP Pull</strong> to turn on automatic polling</li>
+            <li>Click <strong>Discover Vehicles</strong> to find your ABRP vehicles</li>
+            <li>Click <strong>Pull &amp; Save Vehicles</strong> to verify the connection</li>
+            <li>Toggle <strong>Enable ABRP API</strong> to turn on automatic polling</li>
           </ol>
           <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-3">
             <p className="text-sm text-green-800">
               Once enabled, EVConduit will automatically pull your vehicle data from ABRP
-              every <strong>5 minutes</strong>. If the same car is also linked via Enode, data
+              every <strong>60 seconds</strong>. If the same car is also linked via Enode, data
               from both sources will be merged automatically.
             </p>
           </div>
@@ -262,7 +220,7 @@ export default function AbrpPullGuidePage() {
         <div className="space-y-3 text-gray-700">
           <ul className="list-disc ml-6 space-y-2">
             <li>
-              EVConduit polls the ABRP API every 5 minutes using your credentials
+              EVConduit polls the ABRP API every 60 seconds using your token
             </li>
             <li>
               Vehicle data is normalised and stored in the same format as Enode vehicles
@@ -282,30 +240,38 @@ export default function AbrpPullGuidePage() {
         </div>
       </section>
 
-      {/* Session expiry */}
+      {/* Legacy credentials */}
       <section className="mb-10">
         <div className="flex items-center gap-2 mb-3">
           <AlertTriangle className="w-5 h-5 text-amber-600" />
-          <h2 className="text-xl font-semibold text-gray-800">Session Token Expiry</h2>
+          <h2 className="text-xl font-semibold text-gray-800">Legacy Credentials (Advanced)</h2>
         </div>
         <div className="space-y-3 text-gray-700">
           <p>
-            The ABRP session token is a browser session cookie and <strong>will expire</strong> over
-            time (typically when you log out of ABRP or after an extended period).
+            If you cannot obtain an ABRP user token, you can alternatively use legacy credentials
+            extracted from your browser&apos;s developer tools. This method requires a <strong>Session ID</strong>,
+            <strong> API Key</strong>, and <strong>Vehicle ID</strong>.
           </p>
-          <p>When this happens:</p>
-          <ul className="list-disc ml-6 space-y-1">
-            <li>EVConduit will detect consecutive failures and <strong>automatically pause</strong> ABRP Pull after 3 failed attempts</li>
-            <li>You will receive an <strong>email notification</strong> explaining that your session has expired</li>
-            <li>Your vehicle data will continue to show the last known values</li>
-          </ul>
-          <p className="font-medium mt-2">To resume:</p>
-          <ol className="list-decimal ml-6 space-y-1">
-            <li>Log in to ABRP again in your browser</li>
-            <li>Extract a fresh session token (repeat Step 1 above)</li>
-            <li>Update the token in your EVConduit profile</li>
-            <li>Re-enable ABRP Pull</li>
-          </ol>
+          <p>
+            These credentials are available under the <strong>Advanced (Legacy Credentials)</strong> section
+            in your ABRP API settings card. Note that session tokens <strong>expire</strong> periodically
+            and will need to be refreshed.
+          </p>
+          <details className="border border-gray-200 rounded-lg">
+            <summary className="cursor-pointer p-3 font-medium text-sm text-gray-700 hover:bg-gray-50">
+              How to extract legacy credentials from browser dev tools
+            </summary>
+            <ol className="p-3 pt-0 space-y-2 list-decimal list-inside text-sm">
+              <li>Open <strong>Developer Tools</strong> (press <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">F12</kbd> or right-click → Inspect)</li>
+              <li>Go to the <strong>Network</strong> tab</li>
+              <li>In the filter bar, type <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">get_tlm</code></li>
+              <li>Refresh the ABRP page or wait for a request to appear</li>
+              <li>Click on the <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">get_tlm</code> request</li>
+              <li><strong>API Key</strong>: from the <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">Authorization: APIKEY ...</code> header</li>
+              <li><strong>Session ID</strong>: from the request body <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">session_id</code></li>
+              <li><strong>Vehicle ID</strong>: from the request body <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">wakeup_vehicle_id</code></li>
+            </ol>
+          </details>
         </div>
       </section>
 
@@ -315,9 +281,9 @@ export default function AbrpPullGuidePage() {
 
         <div className="space-y-6">
           <div>
-            <h3 className="font-semibold text-gray-800 mb-1">Can I use ABRP Pull and Enode at the same time?</h3>
+            <h3 className="font-semibold text-gray-800 mb-1">Can I use ABRP API and Enode at the same time?</h3>
             <p className="text-sm text-gray-600">
-              Yes. You can have some vehicles connected via Enode and others via ABRP Pull.
+              Yes. You can have some vehicles connected via Enode and others via ABRP API.
               They appear side by side on your dashboard. Each vehicle shows a source badge
               (Enode or ABRP) so you can tell them apart.
             </p>
@@ -335,9 +301,9 @@ export default function AbrpPullGuidePage() {
           </div>
 
           <div>
-            <h3 className="font-semibold text-gray-800 mb-1">Does ABRP Pull count against my Enode vehicle limit?</h3>
+            <h3 className="font-semibold text-gray-800 mb-1">Does ABRP API count against my Enode vehicle limit?</h3>
             <p className="text-sm text-gray-600">
-              No. ABRP Pull completely bypasses Enode, so it does not use any Enode vehicle slots.
+              No. ABRP API completely bypasses Enode, so it does not use any Enode vehicle slots.
             </p>
           </div>
 
@@ -353,7 +319,7 @@ export default function AbrpPullGuidePage() {
           <div>
             <h3 className="font-semibold text-gray-800 mb-1">How often does the data update?</h3>
             <p className="text-sm text-gray-600">
-              EVConduit polls ABRP every 5 minutes. The freshness of the underlying data depends
+              EVConduit polls ABRP every 60 seconds. The freshness of the underlying data depends
               on how often your vehicle reports to ABRP (typically via the manufacturer&apos;s cloud API
               or an OBD dongle).
             </p>
@@ -373,7 +339,7 @@ export default function AbrpPullGuidePage() {
           <div>
             <h3 className="font-semibold text-gray-800 mb-1">Is there a cost?</h3>
             <p className="text-sm text-gray-600">
-              No additional cost for ABRP Pull. It works on both Free and Pro tiers.
+              No additional cost for ABRP API. It works on both Free and Pro tiers.
               However, a Pro subscription is still required for real-time webhook pushes to
               Home Assistant.
             </p>

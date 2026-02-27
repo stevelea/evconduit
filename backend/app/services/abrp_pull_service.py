@@ -1,8 +1,15 @@
 """
-ABRP Pull Service — Read vehicle telemetry FROM ABRP via the v1 session API.
+ABRP Pull Service — Read vehicle telemetry FROM ABRP.
+
+Supports two modes:
+1. Token-based (official): Uses EVConduit's API key + user's ABRP token
+   via GET /1/tlm/get_telemetry?token=<user_token>
+2. Session-based (legacy): Uses user's session_id + API key
+   via POST /1/session/get_tlm
 """
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -10,11 +17,84 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Official EVConduit API key from ABRP/Iternio
+ABRP_API_KEY = os.environ.get("ABRP_API_KEY", "e7b10ea7-c815-4fef-8e5d-e201ff15edbd")
+
+ABRP_GET_TELEMETRY_URL = "https://api.iternio.com/1/tlm/get_telemetry"
 ABRP_GET_TLM_URL = "https://api.iternio.com/1/session/get_tlm"
 
 
 class ABRPPullService:
     """Service for pulling telemetry data from ABRP."""
+
+    async def pull_telemetry_token(self, user_token: str) -> dict:
+        """
+        Pull telemetry using the official token-based API.
+        Uses EVConduit's API key + user's ABRP token.
+
+        Args:
+            user_token: The user's ABRP token (from ABRP settings or OAuth)
+
+        Returns:
+            dict with success status and telemetry data
+        """
+        if not user_token:
+            return {"success": False, "message": "Missing ABRP user token"}
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    ABRP_GET_TELEMETRY_URL,
+                    params={"token": user_token},
+                    headers={"Authorization": f"APIKEY {ABRP_API_KEY}"},
+                    timeout=15.0,
+                )
+
+                if response.status_code == 401:
+                    return {"success": False, "message": "Invalid or expired ABRP token"}
+
+                if response.status_code != 200:
+                    return {
+                        "success": False,
+                        "message": f"ABRP API returned status {response.status_code}: {response.text[:200]}",
+                    }
+
+                try:
+                    result = response.json()
+                except json.JSONDecodeError as e:
+                    return {"success": False, "message": f"Failed to parse ABRP response: {e}"}
+
+                # Token-based API returns different field names than session-based
+                if result.get("status") == "ok":
+                    data = result.get("result") or result.get("data")
+                    if isinstance(data, list):
+                        vehicles = data
+                    elif isinstance(data, dict):
+                        vehicles = [data]
+                    else:
+                        vehicles = []
+
+                    # Remap token-based fields to match session-based format
+                    # so the normalizer works with both
+                    for v in vehicles:
+                        # "telemetry" → "tlm"
+                        if "telemetry" in v and "tlm" not in v:
+                            v["tlm"] = v["telemetry"]
+                        # "typecode" → "car_model"
+                        if "typecode" in v and "car_model" not in v:
+                            v["car_model"] = v["typecode"]
+
+                    logger.info(f"🗺️ ABRP pull (token): got {len(vehicles)} vehicle(s)")
+                    return {"success": True, "vehicles": vehicles, "raw": result}
+
+                return {"success": False, "message": f"Unexpected ABRP response: {json.dumps(result)[:200]}"}
+
+        except httpx.TimeoutException:
+            logger.error("❌ ABRP pull (token) timed out")
+            return {"success": False, "message": "Request timed out"}
+        except Exception as e:
+            logger.error(f"❌ ABRP pull (token) error: {e}")
+            return {"success": False, "message": f"Failed to pull telemetry: {str(e)}"}
 
     async def pull_telemetry(
         self,
@@ -23,15 +103,8 @@ class ABRPPullService:
         vehicle_id: str,
     ) -> dict:
         """
-        Pull telemetry from ABRP via POST /1/session/get_tlm.
-
-        Args:
-            session_id: The ABRP session ID
-            api_key: The ABRP API key (from Authorization: APIKEY header)
-            vehicle_id: The wakeup_vehicle_id to query
-
-        Returns:
-            dict with success status and full response data
+        Legacy: Pull telemetry via POST /1/session/get_tlm.
+        Kept for backward compatibility with existing users.
         """
         if not session_id or not api_key or not vehicle_id:
             return {"success": False, "message": "Missing ABRP pull credentials"}
@@ -66,10 +139,9 @@ class ABRPPullService:
                 except json.JSONDecodeError as e:
                     return {"success": False, "message": f"Failed to parse ABRP response: {e}"}
 
-                # Response format: {"status": "ok", "result": [...vehicles...], "extra": ...}
                 if result.get("status") == "ok" and isinstance(result.get("result"), list):
                     vehicles = result["result"]
-                    logger.info(f"🗺️ ABRP pull: got {len(vehicles)} vehicle(s) in session")
+                    logger.info(f"🗺️ ABRP pull (session): got {len(vehicles)} vehicle(s)")
                     return {"success": True, "vehicles": vehicles, "raw": result}
 
                 return {"success": False, "message": f"Unexpected ABRP response: status={result.get('status')}"}

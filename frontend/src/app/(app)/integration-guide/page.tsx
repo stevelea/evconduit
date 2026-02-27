@@ -41,11 +41,11 @@ export default function IntegrationGuidePage() {
           <li>After linking, click <strong>&quot;Copy ID&quot;</strong> to get the Vehicle ID (Not needed for HACS integration)</li>
         </ul>
 
-        <h3 className="text-lg font-semibold mt-4 mb-2">Option B: Via ABRP Pull</h3>
+        <h3 className="text-lg font-semibold mt-4 mb-2">Option B: Via ABRP API</h3>
         <ul className="list-disc ml-6">
           <li>If Enode capacity is full, or your vehicle is already connected to ABRP, you can pull data from <strong>A Better Route Planner</strong> instead</li>
-          <li>Click <strong>&quot;Link Vehicle with ABRP&quot;</strong> on the Dashboard, or go to your <a href="/profile#abrp-pull" className="text-blue-600 underline">Profile → ABRP Pull Settings</a></li>
-          <li>See the <a href="/docs/abrp-pull" className="text-blue-600 underline">ABRP Pull Guide</a> for full setup instructions</li>
+          <li>Click <strong>&quot;Link Vehicle with ABRP&quot;</strong> on the Dashboard, or go to your <a href="/profile#abrp-pull" className="text-blue-600 underline">Profile → ABRP API Settings</a></li>
+          <li>See the <a href="/docs/abrp-pull" className="text-blue-600 underline">ABRP API Guide</a> for full setup instructions</li>
         </ul>
 
         {/* Hardcoded string */}

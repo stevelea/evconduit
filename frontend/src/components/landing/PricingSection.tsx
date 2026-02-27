@@ -83,8 +83,9 @@ export default function PricingSection() {
                   Open
                 </span>
               </div>
-              <p className="text-2xl font-bold text-green-600 mt-1">ABRP Pull</p>
+              <p className="text-2xl font-bold text-green-600 mt-1">ABRP API</p>
               <p className="text-xs text-gray-500 mt-1">A Better Route Planner</p>
+              <p className="text-xs text-gray-500 mt-1">Any EV brand supported by ABRP</p>
             </div>
 
             <ul className="text-sm text-left text-gray-700 space-y-2">
@@ -101,7 +102,7 @@ export default function PricingSection() {
             ) : isLoggedIn ? (
               <div className="space-y-2">
                 <Button className="w-full" asChild>
-                  <Link href="/profile#abrp-pull">Configure ABRP Pull</Link>
+                  <Link href="/profile#abrp-pull">Configure ABRP API</Link>
                 </Button>
                 <Link href="/docs/abrp-pull" className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline">
                   Setup guide <ExternalLink className="w-3 h-3" />

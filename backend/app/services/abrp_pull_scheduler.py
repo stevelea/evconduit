@@ -16,33 +16,37 @@ from app.storage.user import update_abrp_pull_stats, disable_abrp_pull, get_user
 
 logger = logging.getLogger(__name__)
 
-# Poll every 5 minutes
-DEFAULT_POLL_INTERVAL_SECONDS = 5 * 60
+# Poll every 60 seconds (ABRP approved 30-60s interval)
+DEFAULT_POLL_INTERVAL_SECONDS = 60
 
 # Delay between individual user pulls to avoid hammering ABRP
 REQUEST_DELAY_SECONDS = 1.0
 
-# Auto-disable after this many consecutive failures (3 polls × 5 min = 15 min)
+# Auto-disable after this many consecutive failures
 MAX_CONSECUTIVE_FAILS = 3
 
 
 async def get_users_with_abrp_pull_enabled() -> list[dict]:
     """
     Get all users that have ABRP pull enabled with their credentials.
-    Returns list of dicts with id, session token, api key, and vehicle IDs.
+    Supports both token-based (new) and session-based (legacy) users.
     """
     supabase = get_supabase_admin_client()
     try:
         result = (
             supabase.table("users")
-            .select("id, abrp_pull_session_token, abrp_pull_api_key, abrp_pull_vehicle_ids")
+            .select("id, abrp_pull_user_token, abrp_pull_session_token, abrp_pull_api_key, abrp_pull_vehicle_ids")
             .eq("abrp_pull_enabled", True)
-            .not_.is_("abrp_pull_session_token", "null")
-            .not_.is_("abrp_pull_api_key", "null")
-            .not_.is_("abrp_pull_vehicle_ids", "null")
             .execute()
         )
-        return result.data or []
+        # Filter: must have either user_token OR (session_token + api_key + vehicle_ids)
+        users = []
+        for u in result.data or []:
+            if u.get("abrp_pull_user_token"):
+                users.append(u)
+            elif u.get("abrp_pull_session_token") and u.get("abrp_pull_api_key") and u.get("abrp_pull_vehicle_ids"):
+                users.append(u)
+        return users
     except Exception as e:
         logger.error(f"[❌ ABRP Poll] Failed to get users with ABRP pull enabled: {e}")
         return []
@@ -51,18 +55,23 @@ async def get_users_with_abrp_pull_enabled() -> list[dict]:
 async def pull_abrp_for_user(user: dict) -> int:
     """
     Pull telemetry from ABRP for a single user and save vehicles.
+    Uses token-based API if user has a token, otherwise falls back to session-based.
     Returns the number of vehicles saved.
     """
     user_id = user["id"]
-    session_id = user["abrp_pull_session_token"]
-    api_key = user["abrp_pull_api_key"]
-    vehicle_ids_str = user["abrp_pull_vehicle_ids"]
+    user_token = user.get("abrp_pull_user_token")
+    session_id = user.get("abrp_pull_session_token")
+    api_key = user.get("abrp_pull_api_key")
+    vehicle_ids_str = user.get("abrp_pull_vehicle_ids") or ""
 
     service = get_abrp_pull_service()
 
-    # Use the first vehicle ID as the wakeup ID
-    first_vid = vehicle_ids_str.split(",")[0].strip()
-    result = await service.pull_telemetry(session_id, api_key, first_vid)
+    # Prefer token-based API, fall back to session-based
+    if user_token:
+        result = await service.pull_telemetry_token(user_token)
+    else:
+        first_vid = vehicle_ids_str.split(",")[0].strip()
+        result = await service.pull_telemetry(session_id, api_key, first_vid)
 
     if not result.get("success"):
         error_msg = result.get("message", "Unknown error")

@@ -49,7 +49,7 @@ export const navigation: NavigationGroup[] = [
       { title: 'Integration Guide', href: '/integration-guide', icon: BookOpen }, /* Hardcoded string */
       { title: 'HA API', href: '/docs/ha-api', icon: Terminal }, /* Hardcoded string */
       { title: 'Enode Share (PIF)', href: '/docs/enode-setup', icon: Server }, /* Hardcoded string */
-      { title: 'ABRP Pull Guide', href: '/docs/abrp-pull', icon: Download },
+      { title: 'ABRP API Guide', href: '/docs/abrp-pull', icon: Download },
       { title: 'Capabilities', href: '/docs/capabilities', icon: Zap }, /* Hardcoded string */
       { title: 'Troubleshooting', href: '/docs/troubleshooting', icon: HelpCircle }, /* Hardcoded string */
       { title: 'Release Notes', href: '/docs/updates', icon: Sparkles }, /* Hardcoded string */

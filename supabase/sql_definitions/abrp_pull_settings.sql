@@ -8,3 +8,5 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS abrp_pull_success_count INTEGER DEFAU
 ALTER TABLE users ADD COLUMN IF NOT EXISTS abrp_pull_fail_count INTEGER DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS abrp_pull_last_error TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS abrp_pull_consecutive_fails INTEGER DEFAULT 0;
+-- Token-based API: user's ABRP token (replaces session_token + api_key for new users)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS abrp_pull_user_token TEXT;

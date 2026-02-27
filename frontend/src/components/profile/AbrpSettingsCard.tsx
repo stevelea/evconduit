@@ -113,7 +113,7 @@ export default function AbrpSettingsCard({ userId, accessToken }: AbrpSettingsCa
     }
 
     setSaving(true);
-    const { error } = await authFetch('/me/abrp', {
+    const { data, error } = await authFetch('/me/abrp', {
       method: 'PATCH',
       accessToken,
       body: JSON.stringify({ abrp_enabled: newEnabled }),
@@ -124,7 +124,11 @@ export default function AbrpSettingsCard({ userId, accessToken }: AbrpSettingsCa
       toast.error(error.message || 'Failed to update setting');
     } else {
       setEnabled(newEnabled);
-      toast.success(newEnabled ? 'ABRP enabled' : 'ABRP disabled');
+      if (data?.abrp_pull_disabled) {
+        toast.success('ABRP Push enabled — ABRP API has been disabled to avoid circular data flow');
+      } else {
+        toast.success(newEnabled ? 'ABRP enabled' : 'ABRP disabled');
+      }
       fetchSettings();
     }
     setSaving(false);

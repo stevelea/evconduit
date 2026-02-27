@@ -18,8 +18,7 @@ interface AbrpPullSettingsCardProps {
 
 interface AbrpPullStats {
   abrp_pull_enabled: boolean;
-  abrp_pull_session_token: string | null;
-  abrp_pull_api_key: string | null;
+  abrp_pull_user_token: string | null;
   abrp_pull_vehicle_ids: string | null;
   last_pull_at: string | null;
   pull_success_count: number;
@@ -43,12 +42,9 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
   const [testing, setTesting] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [stats, setStats] = useState<AbrpPullStats | null>(null);
-  const [sessionTokenInput, setSessionTokenInput] = useState('');
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [vehicleIdsInput, setVehicleIdsInput] = useState('');
+  const [userTokenInput, setUserTokenInput] = useState('');
+  const [showUserToken, setShowUserToken] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [showSessionToken, setShowSessionToken] = useState(false);
-  const [showApiKey, setShowApiKey] = useState(false);
   const [hasStoredCredentials, setHasStoredCredentials] = useState(false);
   const [discoveredVehicles, setDiscoveredVehicles] = useState<DiscoveredVehicle[]>([]);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set());
@@ -65,10 +61,8 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
     if (data && !error) {
       setStats(data);
       setEnabled(data.abrp_pull_enabled ?? false);
-      setHasStoredCredentials(!!(data.abrp_pull_session_token || data.abrp_pull_api_key));
-      setVehicleIdsInput(data.abrp_pull_vehicle_ids || '');
-      setSessionTokenInput('');
-      setApiKeyInput('');
+      setHasStoredCredentials(!!data.abrp_pull_user_token);
+      setUserTokenInput('');
     }
     setLoading(false);
   }, [accessToken]);
@@ -78,28 +72,23 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
   }, [fetchSettings]);
 
   const handleSaveCredentials = async () => {
-    if (!sessionTokenInput.trim() && !apiKeyInput.trim() && !vehicleIdsInput.trim()) {
-      toast.error('Please enter at least one credential');
+    if (!userTokenInput.trim()) {
+      toast.error('Please enter your ABRP token');
       return;
     }
 
     setSaving(true);
-    const body: Record<string, string> = {};
-    if (sessionTokenInput.trim()) body.abrp_pull_session_token = sessionTokenInput;
-    if (apiKeyInput.trim()) body.abrp_pull_api_key = apiKeyInput;
-    if (vehicleIdsInput.trim()) body.abrp_pull_vehicle_ids = vehicleIdsInput;
-
     const { error } = await authFetch('/me/abrp/pull', {
       method: 'PATCH',
       accessToken,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ abrp_pull_user_token: userTokenInput }),
       headers: { 'Content-Type': 'application/json' },
     });
 
     if (error) {
-      toast.error(error.message || 'Failed to save credentials');
+      toast.error(error.message || 'Failed to save token');
     } else {
-      toast.success('ABRP Pull credentials saved!');
+      toast.success('ABRP API token saved!');
       fetchSettings();
     }
     setSaving(false);
@@ -111,21 +100,17 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
       method: 'PATCH',
       accessToken,
       body: JSON.stringify({
-        abrp_pull_session_token: '',
-        abrp_pull_api_key: '',
-        abrp_pull_vehicle_ids: '',
+        abrp_pull_user_token: '',
         abrp_pull_enabled: false,
       }),
       headers: { 'Content-Type': 'application/json' },
     });
 
     if (error) {
-      toast.error('Failed to clear credentials');
+      toast.error('Failed to clear token');
     } else {
-      toast.success('ABRP Pull credentials cleared');
-      setSessionTokenInput('');
-      setApiKeyInput('');
-      setVehicleIdsInput('');
+      toast.success('ABRP API token cleared');
+      setUserTokenInput('');
       setEnabled(false);
       setTestResult(null);
       setDiscoveredVehicles([]);
@@ -137,12 +122,12 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
 
   const handleToggleEnabled = async (newEnabled: boolean) => {
     if (newEnabled && !hasStoredCredentials) {
-      toast.error('Please save credentials first');
+      toast.error('Please save a token first');
       return;
     }
 
     setSaving(true);
-    const { error } = await authFetch('/me/abrp/pull', {
+    const { data, error } = await authFetch('/me/abrp/pull', {
       method: 'PATCH',
       accessToken,
       body: JSON.stringify({ abrp_pull_enabled: newEnabled }),
@@ -153,7 +138,11 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
       toast.error(error.message || 'Failed to update setting');
     } else {
       setEnabled(newEnabled);
-      toast.success(newEnabled ? 'ABRP Pull enabled' : 'ABRP Pull disabled');
+      if (data?.abrp_push_disabled) {
+        toast.success('ABRP API enabled — ABRP Push has been disabled to avoid circular data flow');
+      } else {
+        toast.success(newEnabled ? 'ABRP API enabled' : 'ABRP API disabled');
+      }
       fetchSettings();
     }
     setSaving(false);
@@ -162,7 +151,6 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
   const handleDiscover = async () => {
     setDiscovering(true);
     setDiscoveredVehicles([]);
-    // Use the test endpoint without vehicle_ids to just discover
     const { data, error } = await authFetch('/me/abrp/pull/test', {
       method: 'POST',
       accessToken,
@@ -174,7 +162,6 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
       toast.error(error.message || 'Failed to discover vehicles');
     } else if (data?.success && data.available_vehicles) {
       setDiscoveredVehicles(data.available_vehicles);
-      // Auto-select vehicles that have telemetry
       const withTlm = new Set<string>(
         data.available_vehicles
           .filter((v: DiscoveredVehicle) => v.has_telemetry)
@@ -229,7 +216,6 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
       setTestResult(data);
       setShowTestResult(true);
 
-      // Update discovered vehicles with latest info if available
       if (data.available_vehicles) {
         setDiscoveredVehicles(data.available_vehicles);
       }
@@ -258,15 +244,14 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Download className="w-5 h-5 text-indigo-600" />
-            <span className="font-semibold">ABRP Pull Integration</span>
+            <span className="font-semibold">ABRP API Integration</span>
             <TooltipInfo
               content={
                 <>
                   <strong>Read vehicle data from ABRP</strong>
                   <br />
                   Use A Better Route Planner as an alternative vehicle data source.
-                  Open browser dev tools (F12) on ABRP, go to Network tab, filter by
-                  <code>iternio</code>, and copy values from the request.
+                  Paste your ABRP user token from your ABRP account settings.
                 </>
               }
               className="ml-1"
@@ -282,96 +267,54 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
           </a>
         </div>
 
-        {/* How to get credentials - collapsible */}
+        {/* How to get token - collapsible */}
         <details className="text-xs text-gray-500 border border-gray-200 rounded-lg">
           <summary className="cursor-pointer p-2 font-medium text-gray-700 hover:bg-gray-50">
-            How to get these credentials
+            How to get your ABRP token
           </summary>
           <ol className="p-2 pt-0 space-y-1 list-decimal list-inside">
             <li>Log in to <strong>abetterrouteplanner.com</strong></li>
-            <li>Open browser dev tools (F12) → <strong>Network</strong> tab</li>
-            <li>Filter requests by <code>iternio</code></li>
-            <li>Click any <code>get_tlm</code> request</li>
-            <li><strong>API Key</strong>: from the <code>Authorization: APIKEY ...</code> header</li>
-            <li><strong>Session ID</strong>: from the request body <code>session_id</code></li>
-            <li><strong>Vehicle ID</strong>: from the request body <code>wakeup_vehicle_id</code></li>
+            <li>Click your profile icon → <strong>Settings</strong></li>
+            <li>Scroll to <strong>Integrations</strong> or <strong>API Tokens</strong></li>
+            <li>Copy your <strong>user token</strong> and paste it below</li>
           </ol>
+          <p className="px-2 pb-2 text-xs text-gray-400">
+            Your token allows EVConduit to read your vehicle telemetry from ABRP.
+          </p>
         </details>
 
-        {/* API Key Input */}
+        {/* ABRP User Token Input */}
         <div className="space-y-2">
-          <Label htmlFor="abrp-pull-apikey" className="text-sm text-gray-600">
-            API Key
+          <Label htmlFor="abrp-pull-user-token" className="text-sm text-gray-600">
+            ABRP Token
           </Label>
           <div className="relative">
             <Input
-              id="abrp-pull-apikey"
-              type={showApiKey ? 'text' : 'password'}
-              placeholder={hasStoredCredentials && stats?.abrp_pull_api_key ? 'Saved (enter new to replace)' : 'From Authorization: APIKEY header'}
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
+              id="abrp-pull-user-token"
+              type={showUserToken ? 'text' : 'password'}
+              placeholder={hasStoredCredentials && stats?.abrp_pull_user_token ? 'Saved (enter new to replace)' : 'Paste your ABRP user token'}
+              value={userTokenInput}
+              onChange={(e) => setUserTokenInput(e.target.value)}
               className="pr-10"
             />
             <button
               type="button"
-              onClick={() => setShowApiKey(!showApiKey)}
+              onClick={() => setShowUserToken(!showUserToken)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             >
-              {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {showUserToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-          {stats?.abrp_pull_api_key && (
-            <p className="text-xs text-gray-500">Current: {stats.abrp_pull_api_key}</p>
+          {stats?.abrp_pull_user_token && (
+            <p className="text-xs text-gray-500">Current: {stats.abrp_pull_user_token}</p>
           )}
-        </div>
-
-        {/* Session ID Input */}
-        <div className="space-y-2">
-          <Label htmlFor="abrp-pull-session" className="text-sm text-gray-600">
-            Session ID
-          </Label>
-          <div className="relative">
-            <Input
-              id="abrp-pull-session"
-              type={showSessionToken ? 'text' : 'password'}
-              placeholder={hasStoredCredentials && stats?.abrp_pull_session_token ? 'Saved (enter new to replace)' : 'session_id from request body'}
-              value={sessionTokenInput}
-              onChange={(e) => setSessionTokenInput(e.target.value)}
-              className="pr-10"
-            />
-            <button
-              type="button"
-              onClick={() => setShowSessionToken(!showSessionToken)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              {showSessionToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          {stats?.abrp_pull_session_token && (
-            <p className="text-xs text-gray-500">Current: {stats.abrp_pull_session_token}</p>
-          )}
-        </div>
-
-        {/* Vehicle ID Input */}
-        <div className="space-y-2">
-          <Label htmlFor="abrp-pull-vids" className="text-sm text-gray-600">
-            Vehicle ID
-          </Label>
-          <Input
-            id="abrp-pull-vids"
-            type="text"
-            placeholder="wakeup_vehicle_id from request body"
-            value={vehicleIdsInput}
-            onChange={(e) => setVehicleIdsInput(e.target.value)}
-          />
-          <p className="text-xs text-gray-500">The numeric ID from the request body (e.g. 1007787500288)</p>
         </div>
 
         {/* Save / Clear Buttons */}
         <div className="flex gap-2">
           <Button
             onClick={handleSaveCredentials}
-            disabled={saving || (!sessionTokenInput.trim() && !apiKeyInput.trim() && !vehicleIdsInput.trim())}
+            disabled={saving || !userTokenInput.trim()}
             size="sm"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
@@ -384,7 +327,7 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
               size="sm"
               className="text-red-500 hover:text-red-700"
             >
-              Clear All
+              Clear
             </Button>
           )}
         </div>
@@ -458,9 +401,9 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
         {hasStoredCredentials && (
           <div className="flex items-center justify-between py-2">
             <div className="space-y-0.5">
-              <Label className="text-sm font-medium">Enable ABRP Pull</Label>
+              <Label className="text-sm font-medium">Enable ABRP API</Label>
               <p className="text-xs text-gray-500">
-                Pull vehicle data from ABRP as an alternative data source
+                Pull vehicle data from ABRP every 60 seconds
               </p>
             </div>
             <Switch

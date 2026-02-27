@@ -272,6 +272,23 @@ async def save_abrp_vehicle(vehicle_cache: dict, user_id: str, abrp_vehicle_id: 
             "source": "abrp",
         }
 
+        # Reverse geocode location for country_code (if not already cached)
+        location = vehicle_cache.get("location", {})
+        lat = location.get("latitude") if location else None
+        lon = location.get("longitude") if location else None
+
+        try:
+            existing = supabase.table("vehicles").select("country_code").eq("vehicle_id", abrp_vehicle_id).maybe_single().execute()
+            existing_country = existing.data.get("country_code") if existing and existing.data else None
+
+            if not existing_country and lat is not None and lon is not None:
+                country_code = _get_country_code_from_location(lat, lon)
+                if country_code:
+                    payload["country_code"] = country_code
+                    logger.info(f"[🌍 Country cached] ABRP vehicle {abrp_vehicle_id}: {country_code}")
+        except Exception as e:
+            logger.debug(f"[🌍] Could not check/set country_code for ABRP vehicle: {e}")
+
         res = supabase.table("vehicles").upsert(
             payload, on_conflict=["vehicle_id"]
         ).execute()
@@ -447,11 +464,12 @@ async def get_vehicle_by_vehicle_id(vehicle_id: str):
 
 async def get_total_vehicle_count() -> int:
     """
-    Returns the total number of vehicles in the database.
+    Returns the total number of Enode-connected vehicles (excludes ABRP-sourced).
+    Used for the capacity graph on the landing page.
     """
     supabase = get_supabase_admin_client()
     try:
-        res = supabase.table("vehicles").select("id", count="exact").execute()
+        res = supabase.table("vehicles").select("id", count="exact").neq("source", "abrp").execute()
         return res.count
     except Exception as e:
         logger.error(f"[❌ get_total_vehicle_count] {e}")

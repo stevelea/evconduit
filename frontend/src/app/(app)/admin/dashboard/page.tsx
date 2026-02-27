@@ -288,7 +288,7 @@ export default function AdminDashboardPage() {
                 <div className="bg-indigo-50 p-3 rounded-lg">
                   <div className="flex items-center gap-2 text-indigo-600 mb-1">
                     <Car className="w-4 h-4" />
-                    <span className="text-xs font-medium">ABRP Pull</span>
+                    <span className="text-xs font-medium">ABRP API</span>
                   </div>
                   <div className="text-2xl font-bold">{insights.abrp_pull_vehicles ?? 'N/A'}</div>
                   <div className="text-xs text-gray-500">
