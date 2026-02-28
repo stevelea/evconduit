@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight, Languages, Copy, Download } from 'lucide-react';
+import { Send, ChevronDown, ChevronUp, Smartphone, Loader2, Zap, List, Play, ArrowRight, Languages, Copy, Download, ArrowUpDown } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://backend.evconduit.com/api';
 
@@ -212,6 +212,7 @@ export default function XComboPage() {
   const [fetching, setFetching] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'newest' | 'name' | 'most_installed'>('newest');
 
   // Steps expansion state
   const [expandedScene, setExpandedScene] = useState<string | null>(null);
@@ -389,8 +390,14 @@ export default function XComboPage() {
     window.location.href = `https://private-eur.xpeng.com/poster.html?sceneId=${id}&innerJump=xiaopeng://common/car/xcombo/editor?sceneId=${id}`;
   }
 
-  const filteredScenes = scenes.filter(s => !selectedCategory || s.category === selectedCategory);
   const categories = [...new Set(scenes.map(s => s.category).filter(Boolean))] as string[];
+  const filteredScenes = scenes
+    .filter(s => !selectedCategory || s.category === selectedCategory)
+    .sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'most_installed') return (b.install_count || 0) - (a.install_count || 0);
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-white p-4 md:p-8">
@@ -609,30 +616,50 @@ export default function XComboPage() {
           </div>
         )}
 
-        {/* Category filter */}
-        {!loading && categories.length > 1 && (
-          <div className="flex flex-wrap justify-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => setSelectedCategory(null)}
-              className={selectedCategory === null
-                ? 'bg-[#7dd96e] text-black hover:bg-[#6bc45e]'
-                : 'bg-[#2a2a2a] text-gray-300 border-gray-600 hover:bg-[#333] hover:text-white'}
-            >
-              All
-            </Button>
-            {categories.map((cat) => (
-              <Button
-                key={cat}
-                size="sm"
-                onClick={() => setSelectedCategory(cat)}
-                className={selectedCategory === cat
-                  ? 'bg-[#7dd96e] text-black hover:bg-[#6bc45e]'
-                  : 'bg-[#2a2a2a] text-gray-300 border-gray-600 hover:bg-[#333] hover:text-white'}
-              >
-                {cat}
-              </Button>
-            ))}
+        {/* Category filter & sort */}
+        {!loading && scenes.length > 0 && (
+          <div className="space-y-3">
+            {categories.length > 1 && (
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => setSelectedCategory(null)}
+                  className={selectedCategory === null
+                    ? 'bg-[#7dd96e] text-black hover:bg-[#6bc45e]'
+                    : 'bg-[#2a2a2a] text-gray-300 border-gray-600 hover:bg-[#333] hover:text-white'}
+                >
+                  All
+                </Button>
+                {categories.map((cat) => (
+                  <Button
+                    key={cat}
+                    size="sm"
+                    onClick={() => setSelectedCategory(cat)}
+                    className={selectedCategory === cat
+                      ? 'bg-[#7dd96e] text-black hover:bg-[#6bc45e]'
+                      : 'bg-[#2a2a2a] text-gray-300 border-gray-600 hover:bg-[#333] hover:text-white'}
+                  >
+                    {cat}
+                  </Button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-center gap-2">
+              <ArrowUpDown className="h-3.5 w-3.5 text-gray-500" />
+              {([['newest', 'Newest'], ['most_installed', 'Most Installed'], ['name', 'Name']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setSortBy(key)}
+                  className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
+                    sortBy === key
+                      ? 'bg-[#7dd96e]/15 text-[#7dd96e]'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -676,11 +703,9 @@ export default function XComboPage() {
                           {scene.xcombo_code}
                         </span>
                       )}
-                      {scene.install_count > 0 && (
-                        <span className="text-xs text-gray-500 flex items-center gap-0.5">
-                          <Download className="h-3 w-3" /> {scene.install_count}
-                        </span>
-                      )}
+                      <span className="text-xs text-gray-500 flex items-center gap-0.5">
+                        <Download className="h-3 w-3" /> {scene.install_count || 0}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
