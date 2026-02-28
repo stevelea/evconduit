@@ -771,7 +771,10 @@ class ABRPPullSettingsResponse(BaseModel):
     """Response model for ABRP pull settings"""
     abrp_pull_enabled: bool
     abrp_pull_user_token: Optional[str] = None
+    abrp_pull_session_token: Optional[str] = None
+    abrp_pull_api_key: Optional[str] = None
     abrp_pull_vehicle_ids: Optional[str] = None
+    has_session_credentials: bool = False
     last_pull_at: Optional[str] = None
     pull_success_count: int = 0
     pull_fail_count: int = 0
@@ -781,6 +784,8 @@ class ABRPPullSettingsResponse(BaseModel):
 class UpdateABRPPullSettingsRequest(BaseModel):
     """Request model for updating ABRP pull settings"""
     abrp_pull_user_token: Optional[str] = None
+    abrp_pull_session_token: Optional[str] = None
+    abrp_pull_api_key: Optional[str] = None
     abrp_pull_vehicle_ids: Optional[str] = None
     abrp_pull_enabled: Optional[bool] = None
 
@@ -799,7 +804,10 @@ async def get_abrp_pull_settings(user=Depends(get_supabase_user)):
     return ABRPPullSettingsResponse(
         abrp_pull_enabled=stats.get("abrp_pull_enabled", False),
         abrp_pull_user_token=stats.get("abrp_pull_user_token"),
+        abrp_pull_session_token=stats.get("abrp_pull_session_token"),
+        abrp_pull_api_key=stats.get("abrp_pull_api_key"),
         abrp_pull_vehicle_ids=stats.get("abrp_pull_vehicle_ids"),
+        has_session_credentials=bool(stats.get("abrp_pull_session_token") and stats.get("abrp_pull_api_key")),
         last_pull_at=stats.get("last_pull_at"),
         pull_success_count=stats.get("pull_success_count", 0),
         pull_fail_count=stats.get("pull_fail_count", 0),
@@ -828,6 +836,19 @@ async def update_abrp_pull_settings(
         else:
             update_data["abrp_pull_user_token"] = payload.abrp_pull_user_token
 
+    # Handle session credentials
+    if payload.abrp_pull_session_token is not None:
+        if payload.abrp_pull_session_token == "":
+            update_data["abrp_pull_session_token"] = None
+        else:
+            update_data["abrp_pull_session_token"] = payload.abrp_pull_session_token
+
+    if payload.abrp_pull_api_key is not None:
+        if payload.abrp_pull_api_key == "":
+            update_data["abrp_pull_api_key"] = None
+        else:
+            update_data["abrp_pull_api_key"] = payload.abrp_pull_api_key
+
     # Handle vehicle IDs
     if payload.abrp_pull_vehicle_ids is not None:
         if payload.abrp_pull_vehicle_ids == "":
@@ -840,10 +861,11 @@ async def update_abrp_pull_settings(
     if payload.abrp_pull_enabled is not None:
         if payload.abrp_pull_enabled:
             user_token = update_data.get("abrp_pull_user_token") or getattr(local_user, "abrp_pull_user_token", None)
-            if not user_token:
+            session_token = update_data.get("abrp_pull_session_token") or getattr(local_user, "abrp_pull_session_token", None)
+            if not user_token and not session_token:
                 raise HTTPException(
                     status_code=400,
-                    detail="Cannot enable ABRP Pull without an ABRP token"
+                    detail="Cannot enable ABRP Pull without an ABRP token or session credentials"
                 )
             # Disable ABRP Push to avoid circular data flow
             if getattr(local_user, "abrp_enabled", False):

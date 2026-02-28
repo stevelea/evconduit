@@ -297,7 +297,8 @@ async def save_abrp_vehicle(vehicle_cache: dict, user_id: str, abrp_vehicle_id: 
             logger.warning(f"⚠️ save_abrp_vehicle: No data returned")
             return False
 
-        logger.info(f"✅ ABRP vehicle {abrp_vehicle_id} saved for user {user_id}")
+        abrp_extra_keys = list(vehicle_cache.get("abrp_extra", {}).keys())
+        logger.info(f"✅ ABRP vehicle {abrp_vehicle_id} saved for user {user_id} (abrp_extra: {abrp_extra_keys})")
 
         # Cross-populate data between ABRP and Enode if both exist for same car
         brand = vehicle_cache.get("information", {}).get("brand") or vendor or ""

@@ -251,17 +251,22 @@ class ABRPPullService:
 
         # Store extra ABRP fields not in Enode schema
         abrp_extra = {}
-        for key in (
-            "voltage", "current", "batt_temp", "ext_temp", "soh", "soe",
+        extra_field_list = (
+            "voltage", "current", "batt_temp", "ext_temp", "vehicle_temp",
+            "soh", "soe",
             "speed", "odometer", "elevation", "is_dcfc", "is_parked",
             "capacity", "heading", "est_battery_range",
             "hvac_power", "hvac_setpoint", "cabin_temp",
             "tire_pressure_fl", "tire_pressure_fr",
             "tire_pressure_rl", "tire_pressure_rr",
-        ):
+        )
+        # Remap session-based field names to canonical HA sensor names
+        field_remap = {"vehicle_temp": "ext_temp"}
+        for key in extra_field_list:
             val = tlm.get(key)
             if val is not None:
-                abrp_extra[key] = val
+                canonical = field_remap.get(key, key)
+                abrp_extra[canonical] = val
         if abrp_extra:
             vehicle_cache["abrp_extra"] = abrp_extra
 

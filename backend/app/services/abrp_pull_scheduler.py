@@ -69,12 +69,19 @@ async def pull_abrp_for_user(user: dict) -> int:
 
     service = get_abrp_pull_service()
 
-    # Prefer token-based API, fall back to session-based
-    if user_token:
-        result = await service.pull_telemetry_token(user_token)
-    else:
+    # Prefer session-based API when available (returns richer telemetry data
+    # including voltage, current, odometer, etc.), fall back to token-based
+    if session_id and api_key and vehicle_ids_str:
         first_vid = vehicle_ids_str.split(",")[0].strip()
         result = await service.pull_telemetry(session_id, api_key, first_vid)
+        # If session fails, fall back to token-based
+        if not result.get("success") and user_token:
+            logger.info(f"[🔄 ABRP Poll] User {user_id}: session-based failed, falling back to token")
+            result = await service.pull_telemetry_token(user_token)
+    elif user_token:
+        result = await service.pull_telemetry_token(user_token)
+    else:
+        result = {"success": False, "message": "No ABRP credentials available"}
 
     if not result.get("success"):
         error_msg = result.get("message", "Unknown error")

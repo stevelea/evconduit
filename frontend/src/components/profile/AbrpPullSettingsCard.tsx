@@ -19,7 +19,10 @@ interface AbrpPullSettingsCardProps {
 interface AbrpPullStats {
   abrp_pull_enabled: boolean;
   abrp_pull_user_token: string | null;
+  abrp_pull_session_token: string | null;
+  abrp_pull_api_key: string | null;
   abrp_pull_vehicle_ids: string | null;
+  has_session_credentials: boolean;
   last_pull_at: string | null;
   pull_success_count: number;
   pull_fail_count: number;
@@ -48,6 +51,12 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
   const [hasStoredCredentials, setHasStoredCredentials] = useState(false);
   const [discoveredVehicles, setDiscoveredVehicles] = useState<DiscoveredVehicle[]>([]);
   const [selectedVehicleIds, setSelectedVehicleIds] = useState<Set<string>>(new Set());
+  const [sessionTokenInput, setSessionTokenInput] = useState('');
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [showSessionToken, setShowSessionToken] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [hasSessionCredentials, setHasSessionCredentials] = useState(false);
+  const [savingSession, setSavingSession] = useState(false);
   const [testResult, setTestResult] = useState<Record<string, unknown> | null>(null);
   const [showTestResult, setShowTestResult] = useState(false);
 
@@ -62,7 +71,10 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
       setStats(data);
       setEnabled(data.abrp_pull_enabled ?? false);
       setHasStoredCredentials(!!data.abrp_pull_user_token);
+      setHasSessionCredentials(data.has_session_credentials ?? false);
       setUserTokenInput('');
+      setSessionTokenInput('');
+      setApiKeyInput('');
     }
     setLoading(false);
   }, [accessToken]);
@@ -120,9 +132,53 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
     setSaving(false);
   };
 
+  const handleSaveSessionCredentials = async () => {
+    if (!sessionTokenInput.trim() || !apiKeyInput.trim()) {
+      toast.error('Both session token and API key are required');
+      return;
+    }
+    setSavingSession(true);
+    const { error } = await authFetch('/me/abrp/pull', {
+      method: 'PATCH',
+      accessToken,
+      body: JSON.stringify({
+        abrp_pull_session_token: sessionTokenInput,
+        abrp_pull_api_key: apiKeyInput,
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (error) {
+      toast.error(error.message || 'Failed to save session credentials');
+    } else {
+      toast.success('Session credentials saved');
+      fetchSettings();
+    }
+    setSavingSession(false);
+  };
+
+  const handleClearSessionCredentials = async () => {
+    setSavingSession(true);
+    const { error } = await authFetch('/me/abrp/pull', {
+      method: 'PATCH',
+      accessToken,
+      body: JSON.stringify({
+        abrp_pull_session_token: '',
+        abrp_pull_api_key: '',
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (error) {
+      toast.error('Failed to clear session credentials');
+    } else {
+      toast.success('Session credentials cleared');
+      fetchSettings();
+    }
+    setSavingSession(false);
+  };
+
   const handleToggleEnabled = async (newEnabled: boolean) => {
-    if (newEnabled && !hasStoredCredentials) {
-      toast.error('Please save a token first');
+    if (newEnabled && !hasStoredCredentials && !hasSessionCredentials) {
+      toast.error('Please save a token or session credentials first');
       return;
     }
 
@@ -332,8 +388,114 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
           )}
         </div>
 
+        {/* Extended Data — Session Credentials (Optional) */}
+        <details className="border border-gray-200 rounded-lg">
+          <summary className="cursor-pointer p-3 font-medium text-sm text-gray-700 hover:bg-gray-50 flex items-center justify-between">
+            <span>Extended Data (Optional)</span>
+            {hasSessionCredentials && (
+              <span className="text-xs text-green-600 font-normal ml-2">Active</span>
+            )}
+          </summary>
+          <div className="p-3 pt-0 space-y-3">
+            <p className="text-xs text-gray-500">
+              Session credentials provide additional telemetry data (voltage, current, odometer, temperature, etc.)
+              but may expire periodically. The ABRP token above is sufficient for basic data (SOC, power, charging status, battery temp, SOH).
+            </p>
+
+            <details className="text-xs text-gray-500 border border-gray-200 rounded-lg">
+              <summary className="cursor-pointer p-2 font-medium text-gray-700 hover:bg-gray-50">
+                How to get session credentials
+              </summary>
+              <ol className="p-2 pt-0 space-y-1 list-decimal list-inside">
+                <li>Open <strong>abetterrouteplanner.com</strong> in your browser and log in</li>
+                <li>Open <strong>Developer Tools</strong> (F12 or Ctrl+Shift+I)</li>
+                <li>Go to the <strong>Network</strong> tab and look for requests to <code>api.iternio.com</code></li>
+                <li>Find a request with <code>session_id</code> in the payload — copy that value as your <strong>Session Token</strong></li>
+                <li>In the same request, find the <code>api_key</code> parameter or <code>Authorization: APIKEY</code> header — copy that as your <strong>API Key</strong></li>
+              </ol>
+              <p className="px-2 pb-2 text-xs text-gray-400">
+                These credentials come from your browser session and may expire when you log out of ABRP or after some time.
+                When they expire, EVConduit will automatically fall back to the standard ABRP token.
+              </p>
+            </details>
+
+            <div className="space-y-2">
+              <Label htmlFor="abrp-session-token" className="text-sm text-gray-600">
+                Session Token
+              </Label>
+              <div className="relative">
+                <Input
+                  id="abrp-session-token"
+                  type={showSessionToken ? 'text' : 'password'}
+                  placeholder={hasSessionCredentials && stats?.abrp_pull_session_token ? 'Saved (enter new to replace)' : 'Paste ABRP session token'}
+                  value={sessionTokenInput}
+                  onChange={(e) => setSessionTokenInput(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSessionToken(!showSessionToken)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showSessionToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {stats?.abrp_pull_session_token && (
+                <p className="text-xs text-gray-500">Current: {stats.abrp_pull_session_token}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="abrp-api-key" className="text-sm text-gray-600">
+                API Key
+              </Label>
+              <div className="relative">
+                <Input
+                  id="abrp-api-key"
+                  type={showApiKey ? 'text' : 'password'}
+                  placeholder={hasSessionCredentials && stats?.abrp_pull_api_key ? 'Saved (enter new to replace)' : 'Paste ABRP API key'}
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {stats?.abrp_pull_api_key && (
+                <p className="text-xs text-gray-500">Current: {stats.abrp_pull_api_key}</p>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSaveSessionCredentials}
+                disabled={savingSession || !sessionTokenInput.trim() || !apiKeyInput.trim()}
+                size="sm"
+              >
+                {savingSession ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+              </Button>
+              {hasSessionCredentials && (
+                <Button
+                  variant="outline"
+                  onClick={handleClearSessionCredentials}
+                  disabled={savingSession}
+                  size="sm"
+                  className="text-red-500 hover:text-red-700"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+        </details>
+
         {/* Discover + Select Vehicles */}
-        {hasStoredCredentials && (
+        {(hasStoredCredentials || hasSessionCredentials) && (
           <div className="mt-2 pt-4 border-t border-gray-200">
             <Button
               variant="outline"
@@ -398,7 +560,7 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
         )}
 
         {/* Enable Toggle */}
-        {hasStoredCredentials && (
+        {(hasStoredCredentials || hasSessionCredentials) && (
           <div className="flex items-center justify-between py-2">
             <div className="space-y-0.5">
               <Label className="text-sm font-medium">Enable ABRP API</Label>
@@ -415,7 +577,7 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
         )}
 
         {/* Stats Section */}
-        {hasStoredCredentials && stats && totalPulls > 0 && (
+        {(hasStoredCredentials || hasSessionCredentials) && stats && totalPulls > 0 && (
           <div className="mt-2 pt-4 border-t border-gray-200">
             <div className="flex items-center gap-2 mb-3">
               <Activity className="w-4 h-4 text-indigo-600" />
@@ -461,7 +623,7 @@ export default function AbrpPullSettingsCard({ userId, accessToken }: AbrpPullSe
         )}
 
         {/* Test Pull Button */}
-        {hasStoredCredentials && (
+        {(hasStoredCredentials || hasSessionCredentials) && (
           <div className="mt-2">
             <Button
               variant="outline"
