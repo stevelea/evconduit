@@ -30,9 +30,8 @@ export default function RegisterWithCodePage({ params }: { params: Promise<{ cod
       try {
         const codeRes = await fetch(`/api/public/access-code/${code}`);
         if (codeRes.ok) {
-          const data = await codeRes.json();
           setCodeValid(true);
-          setAccessData({ email: data.email, name: data.name });
+          setAccessData({});
         } else {
           throw new Error('Invalid code');
         }

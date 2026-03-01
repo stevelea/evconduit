@@ -220,12 +220,10 @@ async def get_user_by_id(user_id: str) -> User | None:
     """
     try:
         response = supabase.table("users") \
-            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at, pushover_user_key, pushover_enabled, pushover_events, abrp_token, abrp_enabled, abrp_pull_session_token, abrp_pull_api_key, abrp_pull_vehicle_ids, abrp_pull_enabled, country_code") \
+            .select("id, email, role, name, notify_offline, notification_preferences, phone_number, phone_verified, stripe_customer_id, tier, sms_credits, purchased_api_tokens, is_on_trial, trial_ends_at, pushover_user_key, pushover_enabled, pushover_events, abrp_token, abrp_enabled, abrp_pull_user_token, abrp_pull_session_token, abrp_pull_api_key, abrp_pull_vehicle_ids, abrp_pull_enabled, country_code") \
             .eq("id", user_id) \
             .maybe_single() \
             .execute()
-
-        logger.info(f"Response data: {response.data}")  # Debugging line
 
         row = response.data
         if not row:

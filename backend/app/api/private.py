@@ -56,7 +56,7 @@ async def get_user_vehicles(user=Depends(get_supabase_user)):
     user_id = user["sub"]
     now = datetime.now(timezone.utc)
 
-    logger.info(f"🔐 Authenticated user: {user_id} ({user['email']})")
+    logger.info(f"🔐 Authenticated user: {user_id}")
 
     cached_data = get_all_cached_vehicles(user_id)
     logger.debug(f"[DEBUG] cached_data: {cached_data}")
@@ -139,7 +139,7 @@ async def get_vehicle_by_vid(
     user=Depends(get_supabase_user)
 ):
     """Retrieves a specific vehicle by its Enode vehicle ID (vid)."""
-    logger.info(f"🔐 Authenticated user: {user['id']} ({user['email']})")
+    logger.info(f"🔐 Authenticated user: {user['id']}")
     try:
         vehicle = await get_vehicle_by_vehicle_id(vehicle_id)
         if not vehicle:

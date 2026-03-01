@@ -176,8 +176,6 @@ async def validate_access_code(code: str):
 
     return {
         "valid": True,
-        "email": row.get("email"),
-        "name": row.get("name"),
     }
 
 @router.post("/public/access-code/use")

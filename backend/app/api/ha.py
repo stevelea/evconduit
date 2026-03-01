@@ -104,9 +104,7 @@ async def get_current_user_info(user: User = Depends(get_api_key_user)):
     return {
         "user_id": public_user.id,
         "tier": public_user.tier,
-        "email": public_user.email,
         "name": public_user.name,
-        "role": public_user.role,
         "sms_credits": public_user.sms_credits,
     }
 
