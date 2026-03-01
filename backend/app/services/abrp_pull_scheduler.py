@@ -14,7 +14,8 @@ import httpx
 
 from app.lib.supabase import get_supabase_admin_client
 from app.services.abrp_pull_service import get_abrp_pull_service
-from app.storage.vehicle import save_abrp_vehicle
+from app.storage.vehicle import save_abrp_vehicle, get_internal_vehicle_id
+from app.storage.charging import save_charging_sample, check_and_create_charging_session
 from app.storage.user import update_abrp_pull_stats, disable_abrp_pull, get_user_by_id, get_ha_webhook_settings, update_ha_push_stats
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,13 @@ async def pull_abrp_for_user(user: dict) -> int:
             saved = await save_abrp_vehicle(vehicle_cache, user_id, vid)
             if saved:
                 saved_count += 1
+                # Save charging sample for Insights (skip if Enode handles this car)
+                if not has_enode_vehicles or not _abrp_vehicle_has_enode_counterpart(vehicle_cache, user_id):
+                    internal_id = await get_internal_vehicle_id(user_id, vid)
+                    if internal_id:
+                        vehicle_cache["id"] = internal_id
+                        await save_charging_sample(vehicle_cache, user_id)
+                        await check_and_create_charging_session(internal_id, user_id)
                 # Push ABRP data to HA only if user has no Enode vehicles
                 # (if they have Enode, cross-populate enriches the Enode vehicle
                 # which gets pushed to HA via the normal Enode webhook flow)
@@ -142,6 +150,28 @@ async def _user_has_enode_vehicles(user_id: str) -> bool:
         return bool(result.data)
     except Exception as e:
         logger.error(f"[ABRP Poll] Failed to check Enode vehicles for user {user_id}: {e}")
+        return False
+
+
+def _abrp_vehicle_has_enode_counterpart(vehicle_cache: dict, user_id: str) -> bool:
+    """Check if this ABRP vehicle has a matching Enode vehicle (same user + brand)."""
+    brand = (vehicle_cache.get("information", {}).get("brand") or vehicle_cache.get("vendor") or "").upper()
+    if not brand:
+        return False
+    supabase = get_supabase_admin_client()
+    try:
+        result = (
+            supabase.table("vehicles")
+            .select("id")
+            .eq("user_id", user_id)
+            .neq("source", "abrp")
+            .ilike("vendor", brand)
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as e:
+        logger.error(f"[ABRP Poll] Failed to check Enode counterpart for user {user_id}: {e}")
         return False
 
 

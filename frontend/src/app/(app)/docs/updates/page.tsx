@@ -34,6 +34,7 @@ const releases: ReleaseNote[] = [
     improvements: [
       'Multi-vehicle webhook routing — backend ha_webhooks JSON array routes pushes to the correct HA entry per vehicle',
       'Webhook push retry logic with alternative vehicle ID for Enode/internal ID mismatch recovery',
+      'ABRP vehicles now contribute to Insights — charging samples and sessions are recorded for ABRP-only vehicles, so Insights is no longer empty for users without Enode',
     ],
   },
   {

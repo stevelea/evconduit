@@ -435,6 +435,28 @@ async def cross_populate_vehicle_data(user_id: str, saved_source: str, saved_bra
         logger.error(f"[❌ cross_populate_vehicle_data] {e}")
 
 
+async def get_internal_vehicle_id(user_id: str, abrp_vehicle_id: str) -> str | None:
+    """
+    Look up the internal UUID (id) for an ABRP vehicle from the vehicles table.
+    Returns the UUID or None if not found.
+    """
+    supabase = get_supabase_admin_client()
+    try:
+        result = (
+            supabase.table("vehicles")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("vehicle_id", abrp_vehicle_id)
+            .eq("source", "abrp")
+            .maybe_single()
+            .execute()
+        )
+        return result.data.get("id") if result.data else None
+    except Exception as e:
+        logger.error(f"[get_internal_vehicle_id] Failed for user {user_id}, vehicle {abrp_vehicle_id}: {e}")
+        return None
+
+
 async def get_vehicle_by_id(vehicle_id: str):
     """Retrieves a vehicle record by its internal database ID."""
     supabase = get_supabase_admin_client()
