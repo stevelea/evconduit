@@ -284,55 +284,48 @@ async def send_pushover_notification(event: dict, user_id: str | None):
         logger.error(f"[❌ Pushover] Error sending notification for user {user_id}: {e}")
 
 
-async def push_to_homeassistant(event: dict, user_id: str | None):
-    """Pushes a single event to Home Assistant via webhook settings in the DB."""
-    if not user_id:
-        # No logs, just silent return if user is missing (e.g., system hook)
-        return
-
-    settings = get_ha_webhook_settings(user_id)
-    if not settings or not settings.get("ha_webhook_id") or not settings.get("ha_external_url"):
-        logger.info("HA Webhook ID/URL not configured for user_id=%s (skipping HA push)", user_id)
-        return
-
-    # Create a copy of the event to avoid modifying the original
-    ha_event = copy.deepcopy(event)
-
+async def _enrich_ha_event(ha_event: dict, user_id: str):
+    """Look up internal DB ID for the vehicle and enrich the event with cached data."""
     vehicle = ha_event.get("vehicle", {})
     enode_vehicle_id = vehicle.get("id")
+    internal_id = None
 
-    # Look up the internal DB vehicle ID from the Enode vehicle ID
-    # This is needed because users configure the internal ID in HA, not the Enode ID
     if enode_vehicle_id:
         from app.storage.vehicle import get_vehicle_by_vehicle_id
         db_vehicle = await get_vehicle_by_vehicle_id(enode_vehicle_id)
         if db_vehicle:
             internal_id = db_vehicle.get("id")
-            # Add the internal ID that HA expects (matches what users configure)
-            ha_event["vehicleId"] = internal_id
-            vehicle["id"] = internal_id  # Replace Enode ID with internal ID
-            logger.info("HA push: Mapped Enode ID %s to internal ID %s", enode_vehicle_id, internal_id)
+            # Add both IDs as extra fields
+            ha_event["vehicleId"] = enode_vehicle_id
+            ha_event["enodeVehicleId"] = enode_vehicle_id
+            ha_event["internalVehicleId"] = internal_id
+            vehicle["enodeId"] = enode_vehicle_id
+            vehicle["internalId"] = internal_id
 
-            # Enrich with data from DB cache (added by cross-populate with ABRP)
+            # Enrich with data from DB cache
             try:
                 db_cache_str = db_vehicle.get("vehicle_cache")
                 if db_cache_str:
-                    import json
                     db_cache = json.loads(db_cache_str) if isinstance(db_cache_str, str) else db_cache_str
                     abrp_extra = db_cache.get("abrp_extra")
                     if abrp_extra:
                         vehicle["abrp_extra"] = abrp_extra
                         logger.info("HA push: Enriched event with abrp_extra for user %s", user_id)
-                    # Enrich with odometer from DB if not in Enode event
-                    if not vehicle.get("odometer") and db_cache.get("odometer"):
-                        vehicle["odometer"] = db_cache["odometer"]
-                        logger.info("HA push: Enriched event with odometer for user %s", user_id)
+                    enode_odometer = vehicle.get("odometer") or {}
+                    if not enode_odometer.get("distance") and db_cache.get("odometer"):
+                        db_odo = db_cache["odometer"]
+                        if isinstance(db_odo, dict) and db_odo.get("distance"):
+                            vehicle["odometer"] = db_odo
+                            logger.info("HA push: Enriched odometer from DB cache (%s km) for user %s", db_odo.get("distance"), user_id)
+                        elif isinstance(db_odo, (int, float)) and db_odo > 0:
+                            vehicle["odometer"] = {"distance": db_odo, "lastUpdated": None}
+                            logger.info("HA push: Enriched odometer from DB cache (%s km) for user %s", db_odo, user_id)
             except Exception as e:
                 logger.warning("HA push: Failed to enrich from DB cache: %s", e)
         else:
             logger.warning("HA push: Could not find DB vehicle for Enode ID %s", enode_vehicle_id)
 
-    # Ensure displayName is set (fallback to brand + model if Enode doesn't provide one)
+    # Ensure displayName is set
     info = vehicle.get("information", {})
     if not info.get("displayName"):
         brand = info.get("brand", "")
@@ -344,7 +337,63 @@ async def push_to_homeassistant(event: dict, user_id: str | None):
             vehicle["information"]["displayName"] = fallback_name
             logger.info("HA push: Added fallback displayName '%s' for user %s", fallback_name, user_id)
 
-    # Log chargeState data being pushed to HA for debugging
+    return enode_vehicle_id, internal_id
+
+
+async def _send_to_ha_webhook(ha_event: dict, url: str, vehicle: dict, user_id: str) -> bool:
+    """Send event to a single HA webhook URL. Returns True if accepted."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=ha_event, timeout=10.0)
+            resp.raise_for_status()
+            response_text = resp.text
+
+            if "ignored - different vehicle" in response_text.lower():
+                # Retry with alternative vehicle ID
+                alt_id = vehicle.get("internalId") if vehicle.get("id") != vehicle.get("internalId") else vehicle.get("enodeId")
+                if alt_id and alt_id != vehicle.get("id"):
+                    logger.info("HA push: Retrying with alternative ID %s for user %s", alt_id, user_id)
+                    vehicle["id"] = alt_id
+                    ha_event["vehicleId"] = alt_id
+                    resp2 = await client.post(url, json=ha_event, timeout=10.0)
+                    resp2.raise_for_status()
+                    if "ignored - different vehicle" not in resp2.text.lower():
+                        logger.info("HA push: Retry succeeded with alt ID %s for user %s", alt_id, user_id)
+                        return True
+                return False
+            else:
+                return True
+    except Exception as e:
+        logger.error("Failed to push to HA webhook %s: %s", url, e)
+        return False
+
+
+async def push_to_homeassistant(event: dict, user_id: str | None):
+    """Pushes a single event to Home Assistant via webhook settings in the DB.
+    Supports multi-vehicle: if ha_webhooks array has entries, push to the
+    webhook matching this vehicle. Falls back to legacy single webhook."""
+    if not user_id:
+        return
+
+    settings = get_ha_webhook_settings(user_id)
+    if not settings:
+        logger.info("HA Webhook not configured for user_id=%s (skipping HA push)", user_id)
+        return
+
+    ha_webhooks = settings.get("ha_webhooks") or []
+    legacy_webhook_id = settings.get("ha_webhook_id")
+    legacy_external_url = settings.get("ha_external_url")
+
+    if not ha_webhooks and (not legacy_webhook_id or not legacy_external_url):
+        logger.info("HA Webhook ID/URL not configured for user_id=%s (skipping HA push)", user_id)
+        return
+
+    # Create a copy and enrich the event
+    ha_event = copy.deepcopy(event)
+    vehicle = ha_event.get("vehicle", {})
+    enode_vehicle_id, internal_id = await _enrich_ha_event(ha_event, user_id)
+
+    # Log chargeState
     charge_state = vehicle.get("chargeState", {})
     logger.info(
         "HA push chargeState for user %s: chargeRate=%s, batteryLevel=%s, isCharging=%s",
@@ -354,27 +403,46 @@ async def push_to_homeassistant(event: dict, user_id: str | None):
         charge_state.get("isCharging"),
     )
 
-    url = f"{settings['ha_external_url'].rstrip('/')}/api/webhook/{settings['ha_webhook_id']}"
-    logger.debug("Pushing to HA webhook %s → %s", url, ha_event)
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=ha_event, timeout=10.0)
-            resp.raise_for_status()
-            response_text = resp.text
+    # Try ha_webhooks array first (multi-vehicle support)
+    if ha_webhooks:
+        # Find webhook entries matching this vehicle (by enode ID or internal ID)
+        matching = [w for w in ha_webhooks
+                    if w.get("vehicle_id") in (enode_vehicle_id, internal_id)]
+        if not matching:
+            # No specific match — fall through to legacy webhook
+            logger.debug("HA push: No matching webhook in ha_webhooks for vehicle %s, trying legacy", enode_vehicle_id)
+        else:
+            for wh in matching:
+                wh_url = f"{wh['external_url'].rstrip('/')}/api/webhook/{wh['webhook_id']}"
+                # Set vehicle["id"] to match the configured vehicle_id
+                event_copy = copy.deepcopy(ha_event)
+                event_vehicle = event_copy.get("vehicle", {})
+                event_vehicle["id"] = wh["vehicle_id"]
+                event_copy["vehicleId"] = wh["vehicle_id"]
+                logger.info("HA push: vehicle %s → webhook %s for user %s", enode_vehicle_id, wh["webhook_id"][:8], user_id)
+                success = await _send_to_ha_webhook(event_copy, wh_url, event_vehicle, user_id)
+                if success:
+                    logger.info("Successfully pushed event to HA: HTTP 200")
+                    track_ha_push(success=True)
+                    update_ha_push_stats(user_id, success=True)
+                else:
+                    logger.warning("HA push: Vehicle ID mismatch for user %s via ha_webhooks", user_id)
+                    track_ha_push(success=False)
+                    update_ha_push_stats(user_id, success=False, error="vehicle_id_mismatch")
+            return
 
-            # Check for vehicle ID mismatch error from HA
-            if "ignored - different vehicle" in response_text.lower():
-                logger.warning("HA push: Vehicle ID mismatch for user %s - HA config needs updating", user_id)
-                track_ha_push(success=False)
-                update_ha_push_stats(user_id, success=False, error="vehicle_id_mismatch")
-            else:
-                logger.info("Successfully pushed event to HA: HTTP %s", resp.status_code)
-                track_ha_push(success=True)
-                update_ha_push_stats(user_id, success=True)
-    except Exception as e:
-        logger.error("Failed to push to HA webhook: %s", e)
+    # Legacy single webhook (backwards compatible)
+    url = f"{legacy_external_url.rstrip('/')}/api/webhook/{legacy_webhook_id}"
+    logger.info("HA push: vehicle %s → legacy webhook for user %s", enode_vehicle_id, user_id)
+    success = await _send_to_ha_webhook(ha_event, url, vehicle, user_id)
+    if success:
+        logger.info("Successfully pushed event to HA: HTTP 200")
+        track_ha_push(success=True)
+        update_ha_push_stats(user_id, success=True)
+    else:
+        logger.warning("HA push: Vehicle ID mismatch for user %s", user_id)
         track_ha_push(success=False)
-        update_ha_push_stats(user_id, success=False, error=str(e))
+        update_ha_push_stats(user_id, success=False, error="vehicle_id_mismatch")
 
 
 async def push_to_abrp(event: dict, user_id: str | None):

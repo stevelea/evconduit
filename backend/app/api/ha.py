@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Cache: maps (user_id, enode_vehicle_id) -> the vehicle_id format HA uses for polling.
+# This lets the webhook push use the same ID format that HA expects.
+ha_vehicle_id_cache: dict[str, str] = {}  # key: f"{user_id}:{enode_vehicle_id}", value: polled vehicle_id
+
 def _handle_api_error(e: APIError, vehicle_id: str, context: str):
     """
     Handle APIError from Supabase. Translate common error codes to HTTP responses.
@@ -135,6 +139,12 @@ async def get_vehicle_status_legacy(vehicle_id: str, user: User = Depends(get_ap
     if not vehicle:
         logger.warning("[get_vehicle_status_legacy] Vehicle not found: %s", vehicle_id)
         raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    # Record which vehicle ID format HA is using so webhook pushes can match it
+    enode_vid = vehicle.get("vehicle_id")
+    if enode_vid:
+        cache_key = f"{user.id}:{enode_vid}"
+        ha_vehicle_id_cache[cache_key] = vehicle_id
 
     if vehicle.get("user_id") != user.id:
         logger.warning(
@@ -466,6 +476,7 @@ async def post_vehicle_charging(
 class WebhookRegistrationRequest(BaseModel):
     webhook_id: str = Field(..., description="The Home Assistant webhook ID (entry_id)")
     external_url: str = Field(..., description="The Home Assistant external URL")
+    vehicle_id: str = Field("", description="The vehicle ID configured in HA (for multi-vehicle support)")
 
 
 @router.post("/ha/webhook/register",
@@ -487,7 +498,7 @@ async def register_ha_webhook(
     )
 
     try:
-        success = set_ha_webhook_settings(user.id, body.webhook_id, body.external_url)
+        success = set_ha_webhook_settings(user.id, body.webhook_id, body.external_url, body.vehicle_id)
         if success:
             # Clear any stale HA error (e.g. vehicle_id_mismatch from before re-registration)
             from app.storage.user import clear_ha_last_error

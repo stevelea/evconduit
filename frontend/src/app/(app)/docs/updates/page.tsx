@@ -15,6 +15,28 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.03.01',
+    date: 'March 1, 2026',
+    highlights: 'Multi-vehicle Home Assistant support and webhook push reliability improvements',
+    features: [
+      'Multi-vehicle HA support — add multiple EVConduit integration entries (one per vehicle) with isolated sensors, devices, and webhooks',
+      'Services (set_charging, update_odometer, send_abrp_telemetry) now accept optional vehicle_id parameter to target specific vehicles',
+      'HA devices now show actual vehicle name and model instead of generic "EVConduit"',
+      'Config flow now uses vehicle display name as entry title for easy identification',
+      'Duplicate vehicle prevention — config flow blocks adding the same vehicle twice',
+    ],
+    fixes: [
+      'Fixed services being overwritten when multiple integration entries are loaded — only last vehicle was controllable',
+      'Fixed unloading one vehicle entry removing services for all vehicles',
+      'Fixed reconfigure step always targeting the first entry instead of the selected one',
+      'Fixed webhook handler crashing when coordinator not found (now returns 404 gracefully)',
+    ],
+    improvements: [
+      'Multi-vehicle webhook routing — backend ha_webhooks JSON array routes pushes to the correct HA entry per vehicle',
+      'Webhook push retry logic with alternative vehicle ID for Enode/internal ID mismatch recovery',
+    ],
+  },
+  {
     version: '2026.02.27',
     date: 'February 27, 2026',
     highlights: 'Official ABRP API integration, token-based auth, 60s polling, cross-source data merge, and landing page update',

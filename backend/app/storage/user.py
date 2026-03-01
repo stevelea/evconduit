@@ -477,24 +477,46 @@ async def create_onboarding_row(user_id: str) -> dict | None:
         logger.error(f"[❌ create_onboarding_row] {e}")
         return None
 
-def set_ha_webhook_settings(user_id: str, webhook_id: str, external_url: str) -> bool:
-    """Saves Home Assistant webhook settings for a user."""
+def set_ha_webhook_settings(user_id: str, webhook_id: str, external_url: str, vehicle_id: str = "") -> bool:
+    """Saves Home Assistant webhook settings for a user.
+    Also updates ha_webhooks array for multi-vehicle support."""
     try:
+        update_data = {"ha_webhook_id": webhook_id, "ha_external_url": external_url}
+
+        # Also upsert into ha_webhooks array for multi-vehicle support
+        if webhook_id and external_url:
+            existing = supabase.table("users") \
+                .select("ha_webhooks") \
+                .eq("id", user_id) \
+                .maybe_single() \
+                .execute()
+            webhooks = (existing.data or {}).get("ha_webhooks") or []
+            # Remove any existing entry with same webhook_id or vehicle_id
+            webhooks = [w for w in webhooks
+                        if w.get("webhook_id") != webhook_id
+                        and (not vehicle_id or w.get("vehicle_id") != vehicle_id)]
+            webhooks.append({
+                "webhook_id": webhook_id,
+                "external_url": external_url,
+                "vehicle_id": vehicle_id,
+            })
+            update_data["ha_webhooks"] = webhooks
+
         result = supabase.table("users") \
-            .update({"ha_webhook_id": webhook_id, "ha_external_url": external_url}) \
+            .update(update_data) \
             .eq("id", user_id) \
             .execute()
-        # Supabase returns the updated row(s) in result.data on success
         return result.data is not None
     except Exception as e:
         logger.error(f"[❌ set_ha_webhook_settings] {e}")
         return False
 
+
 def get_ha_webhook_settings(user_id: str) -> dict | None:
     """Retrieves Home Assistant webhook settings for a user."""
     try:
         result = supabase.table("users") \
-            .select("ha_webhook_id, ha_external_url") \
+            .select("ha_webhook_id, ha_external_url, ha_webhooks") \
             .eq("id", user_id) \
             .maybe_single() \
             .execute()
@@ -503,6 +525,7 @@ def get_ha_webhook_settings(user_id: str) -> dict | None:
             return {
                 "ha_webhook_id": result.data.get("ha_webhook_id"),
                 "ha_external_url": result.data.get("ha_external_url"),
+                "ha_webhooks": result.data.get("ha_webhooks") or [],
             }
         return None
     except Exception as e:
