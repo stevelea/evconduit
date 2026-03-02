@@ -16,6 +16,7 @@ import Link from 'next/link';
 type UserVehicle = {
   vehicle_id: string;
   vendor: string;
+  source?: string;
 };
 
 type AdminUserView = {
@@ -34,6 +35,7 @@ type AdminUserView = {
   days_inactive?: number | null;
   enode_account_id?: string | null;
   enode_account_name?: string | null;
+  abrp_pull_enabled?: boolean;
 };
 
 type EnodeAccountOption = {
@@ -416,7 +418,7 @@ export default function UserAdminPage() {
               <SortHeader label="Tier" sortKeyName="tier" />
               <SortHeader label="API Calls (30d)" sortKeyName="api_calls_30d" />
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Admin</th>
-              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Enode Connected</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Connected</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Account</th>
               <SortHeader label="Vehicles" sortKeyName="vehicle_count" />
               <SortHeader label="Days Inactive" sortKeyName="days_inactive" />
@@ -456,25 +458,41 @@ export default function UserAdminPage() {
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900 capitalize">{u.tier}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.api_calls_30d.toLocaleString()}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.is_admin ? 'Yes' : 'No'}</td>
-                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">{u.linked_to_enode ? '✓' : '✗'}</td>
                     <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
-                      <select
-                        className="text-xs border border-gray-200 rounded px-2 py-1 bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
-                        value={u.enode_account_id || ''}
-                        disabled={reassigningUserId === u.id}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleReassignAccount(u.id, e.target.value);
-                          }
-                        }}
-                      >
-                        <option value="">— None —</option>
-                        {enodeAccounts.map((acc) => (
-                          <option key={acc.id} value={acc.id}>
-                            {acc.name} ({acc.vehicle_count}/{acc.max_vehicles})
-                          </option>
-                        ))}
-                      </select>
+                      {(() => {
+                        const hasEnode = u.linked_to_enode;
+                        const hasAbrp = u.abrp_pull_enabled || u.vehicles?.some(v => v.source === 'abrp');
+                        if (!hasEnode && !hasAbrp) return <span className="text-gray-400">–</span>;
+                        return (
+                          <span className="flex gap-1">
+                            {hasEnode && <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-medium">E</span>}
+                            {hasAbrp && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">A</span>}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                      {!u.enode_account_id && (u.abrp_pull_enabled || u.vehicles?.some(v => v.source === 'abrp')) && !u.linked_to_enode ? (
+                        <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-medium">ABRP</span>
+                      ) : (
+                        <select
+                          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                          value={u.enode_account_id || ''}
+                          disabled={reassigningUserId === u.id}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleReassignAccount(u.id, e.target.value);
+                            }
+                          }}
+                        >
+                          <option value="">— None —</option>
+                          {enodeAccounts.map((acc) => (
+                            <option key={acc.id} value={acc.id}>
+                              {acc.name} ({acc.vehicle_count}/{acc.max_vehicles})
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td className="px-4 py-2 text-sm text-gray-900">
                       {u.vehicles && u.vehicles.length > 0 ? (

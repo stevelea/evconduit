@@ -59,7 +59,7 @@ def get_all_cached_vehicles(user_id: str) -> list[dict]:
     try:
         response = supabase \
             .table("vehicles") \
-            .select("id, vehicle_cache, updated_at") \
+            .select("id, vehicle_cache, updated_at, source") \
             .eq("user_id", user_id) \
             .execute()
         return response.data or []
@@ -277,8 +277,10 @@ async def save_abrp_vehicle(vehicle_cache: dict, user_id: str, abrp_vehicle_id: 
         lat = location.get("latitude") if location else None
         lon = location.get("longitude") if location else None
 
+        is_new_vehicle = False
         try:
             existing = supabase.table("vehicles").select("country_code").eq("vehicle_id", abrp_vehicle_id).maybe_single().execute()
+            is_new_vehicle = not (existing and existing.data)
             existing_country = existing.data.get("country_code") if existing and existing.data else None
 
             if not existing_country and lat is not None and lon is not None:
@@ -299,6 +301,15 @@ async def save_abrp_vehicle(vehicle_cache: dict, user_id: str, abrp_vehicle_id: 
 
         abrp_extra_keys = list(vehicle_cache.get("abrp_extra", {}).keys())
         logger.info(f"✅ ABRP vehicle {abrp_vehicle_id} saved for user {user_id} (abrp_extra: {abrp_extra_keys})")
+
+        # Notify admins about new ABRP vehicle
+        if is_new_vehicle:
+            try:
+                user_res = supabase.table("users").select("email").eq("id", user_id).maybe_single().execute()
+                user_email = user_res.data.get("email", "Unknown") if user_res.data else "Unknown"
+                await notify_admins_new_vehicle(vendor=f"{vendor} (ABRP)", user_email=user_email, vehicle_id=abrp_vehicle_id)
+            except Exception as notify_err:
+                logger.warning(f"Failed to notify admins about new ABRP vehicle: {notify_err}")
 
         # Cross-populate data between ABRP and Enode if both exist for same car
         brand = vehicle_cache.get("information", {}).get("brand") or vendor or ""

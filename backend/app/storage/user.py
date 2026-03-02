@@ -52,7 +52,7 @@ async def get_all_users_with_enode_info():
     """
     try:
         logger.info("🔎 Fetching Supabase users...")
-        res = supabase.table("users").select("id, email, name, role, is_approved, tier, created_at, enode_account_id").limit(1000).execute()
+        res = supabase.table("users").select("id, email, name, role, is_approved, tier, created_at, enode_account_id, abrp_pull_enabled").limit(1000).execute()
         users = res.data or []
         logger.info(f"ℹ️ Found {len(users)} users in Supabase")
 
@@ -83,7 +83,7 @@ async def get_all_users_with_enode_info():
 
         # Fetch all vehicles from database
         logger.info("🚗 Fetching vehicles from database...")
-        vehicles_res = supabase.table("vehicles").select("vehicle_id, user_id, vendor, country_code").execute()
+        vehicles_res = supabase.table("vehicles").select("vehicle_id, user_id, vendor, country_code, source").execute()
         vehicles = vehicles_res.data or []
         # Group vehicles by user_id and track country codes
         vehicles_by_user = {}
@@ -95,7 +95,8 @@ async def get_all_users_with_enode_info():
             vehicles_by_user[uid].append({
                 "vehicle_id": v.get("vehicle_id"),
                 "vendor": v.get("vendor"),
-                "country_code": v.get("country_code")
+                "country_code": v.get("country_code"),
+                "source": v.get("source") or "enode",
             })
             # Store first country_code found for user
             if uid not in country_by_user and v.get("country_code"):
@@ -164,6 +165,7 @@ async def get_all_users_with_enode_info():
                 "days_inactive": days_inactive,
                 "enode_account_id": enode_acct_id,
                 "enode_account_name": account_name_map.get(enode_acct_id) if enode_acct_id else None,
+                "abrp_pull_enabled": user.get("abrp_pull_enabled", False),
             })
 
         return enriched
@@ -659,10 +661,11 @@ async def get_abrp_user_count() -> int:
 
 
 async def get_abrp_pull_user_count() -> int:
-    """Returns the number of users with ABRP Pull enabled."""
+    """Returns the number of users who have ABRP vehicles."""
     try:
-        res = supabase.table("users").select("id", count="exact").eq("abrp_pull_enabled", True).execute()
-        return res.count
+        res = supabase.table("vehicles").select("user_id").eq("source", "abrp").execute()
+        unique_users = set(v["user_id"] for v in (res.data or []))
+        return len(unique_users)
     except Exception as e:
         logger.error(f"[❌ get_abrp_pull_user_count] {e}")
         return 0

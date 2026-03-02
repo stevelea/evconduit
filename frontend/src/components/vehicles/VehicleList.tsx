@@ -1,4 +1,4 @@
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Vehicle } from "@/types/vehicle";
 import clsx from "clsx";
@@ -28,6 +28,82 @@ function formatLastSeen(lastSeen: string | null): string {
   });
 }
 
+// Merge vehicles from different sources (Enode + ABRP) that represent the same car.
+// Matching: same brand (case-insensitive) within the same user — mirrors backend cross_populate logic.
+function mergeVehicles(vehicles: Vehicle[]): Vehicle[] {
+  const byBrand = new Map<string, Vehicle[]>();
+
+  for (const v of vehicles) {
+    const brand = (v.information?.brand || '').toLowerCase();
+    if (!brand) {
+      // No brand — can't match, pass through as-is
+      byBrand.set(v.id, [v]);
+      continue;
+    }
+    const existing = byBrand.get(brand);
+    if (existing) {
+      existing.push(v);
+    } else {
+      byBrand.set(brand, [v]);
+    }
+  }
+
+  const result: Vehicle[] = [];
+
+  for (const group of byBrand.values()) {
+    if (group.length === 1) {
+      // Single source — tag with sources array for consistent badge rendering
+      const v = group[0];
+      result.push({ ...v, sources: [v.source || 'enode'] });
+      continue;
+    }
+
+    // Find Enode (primary) and ABRP vehicles
+    const enode = group.find((v) => v.source !== 'abrp');
+    const abrp = group.find((v) => v.source === 'abrp');
+
+    if (enode && abrp) {
+      // Merge: Enode is primary, attach ABRP reference
+      const lastSeen = pickMostRecent(enode.lastSeen, abrp.lastSeen);
+      result.push({
+        ...enode,
+        lastSeen,
+        sources: ['enode', 'abrp'],
+        abrpVehicle: abrp,
+        // If Enode lacks abrp_extra but ABRP has it, carry it over
+        abrp_extra: enode.abrp_extra || abrp.abrp_extra,
+      });
+    } else {
+      // Multiple vehicles of same brand but same source — don't merge, pass through
+      for (const v of group) {
+        result.push({ ...v, sources: [v.source || 'enode'] });
+      }
+    }
+  }
+
+  return result;
+}
+
+function pickMostRecent(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return new Date(a) >= new Date(b) ? a : b;
+}
+
+function SourceBadges({ sources }: { sources?: ('enode' | 'abrp')[] }) {
+  if (!sources || sources.length === 0) return null;
+  return (
+    <>
+      {sources.includes('enode') && (
+        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">E</span>
+      )}
+      {sources.includes('abrp') && (
+        <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP</span>
+      )}
+    </>
+  );
+}
+
 type Props = {
   vehicles: Vehicle[];
   loading: boolean;
@@ -43,6 +119,8 @@ function VehicleList({
   onDetailsClick,
   onCopyIdClick,
 }: Props) {
+  const merged = useMemo(() => mergeVehicles(vehicles || []), [vehicles]);
+
   if (loading) {
     return (
       <>
@@ -130,7 +208,7 @@ function VehicleList({
               </tr>
             </thead>
             <tbody>
-              {vehicles.map((vehicle) => {
+              {merged.map((vehicle) => {
                 const displayName =
                   vehicle.information?.displayName ||
                   [vehicle.information?.brand, vehicle.information?.model]
@@ -158,9 +236,7 @@ function VehicleList({
                     <td className="px-6 py-4">
                       <div className="font-semibold text-gray-900">
                         {displayName}
-                        {vehicle.source === 'abrp' && (
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP</span>
-                        )}
+                        <SourceBadges sources={vehicle.sources} />
                       </div>
                       <div className="text-xs text-gray-400">
                         Vehicle ID: {vehicle.db_id}
@@ -212,7 +288,7 @@ function VehicleList({
       </div>
       {/* Mobil/kort, actions bredvid varandra */}
       <div className="md:hidden flex flex-col gap-4">
-        {vehicles.map((vehicle) => {
+        {merged.map((vehicle) => {
           const displayName =
             vehicle.information?.displayName ||
             [vehicle.information?.brand, vehicle.information?.model]
@@ -242,9 +318,7 @@ function VehicleList({
             >
               <div className="font-semibold text-lg text-gray-900">
                 {displayName}
-                {vehicle.source === 'abrp' && (
-                  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP</span>
-                )}
+                <SourceBadges sources={vehicle.sources} />
               </div>
               <div className="text-xs text-gray-400">Vehicle ID: {vehicle.db_id}</div>
               <div className="text-xs text-gray-400 mb-1">Last seen: {formatLastSeen(vehicle.lastSeen)}</div>

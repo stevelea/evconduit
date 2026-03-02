@@ -165,7 +165,9 @@
       "Bash(echo No psql or supabase CLI:*)",
       "Bash(gh release:*)",
       "WebFetch(domain:www.postman.com)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)"
     ]
   }
 }

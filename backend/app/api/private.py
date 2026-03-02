@@ -74,6 +74,7 @@ async def get_user_vehicles(user=Depends(get_supabase_user)):
                 for row in cached_data:
                     vehicle_obj = json.loads(row["vehicle_cache"]) if isinstance(row["vehicle_cache"], str) else row["vehicle_cache"]
                     vehicle_obj["db_id"] = row["id"]
+                    vehicle_obj["source"] = row.get("source") or "enode"
                     vehicles_from_cache.append(vehicle_obj)
                 logger.info(f"✅ Serving {len(vehicles_from_cache)} vehicles from cache")
                 return vehicles_from_cache
@@ -105,6 +106,7 @@ async def get_user_vehicles(user=Depends(get_supabase_user)):
     for row in cached_data:
         vehicle_obj = json.loads(row["vehicle_cache"]) if isinstance(row["vehicle_cache"], str) else row["vehicle_cache"]
         vehicle_obj["db_id"] = row["id"]
+        vehicle_obj["source"] = row.get("source") or "enode"
         vehicles_from_cache.append(vehicle_obj)
     logger.info(f"✅ Returning {len(vehicles_from_cache)} vehicles")
     return vehicles_from_cache

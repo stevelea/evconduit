@@ -47,7 +47,8 @@ export default function VehicleDetailsModal({
   const { mergedUser, accessToken } = useAuth({ requireAuth: false });
   const isPro = mergedUser?.tier === 'pro';
   const isAbrp = vehicle.source === 'abrp';
-  const abrpExtra = vehicle.abrp_extra;
+  const isMerged = vehicle.sources && vehicle.sources.length > 1;
+  const abrpExtra = vehicle.abrp_extra || vehicle.abrpVehicle?.abrp_extra;
 
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -109,7 +110,12 @@ export default function VehicleDetailsModal({
             {information?.year ? <Row label="Year" value={information.year} /> : null}
             {information?.vin && <Row label="VIN" value={information.vin} />}
             <Row label="Source" value={
-              isAbrp
+              isMerged ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">Enode</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP</span>
+                </span>
+              ) : isAbrp
                 ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">ABRP</span>
                 : <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">Enode</span>
             } />
@@ -158,7 +164,7 @@ export default function VehicleDetailsModal({
             </Section>
           )}
 
-          {isAbrp && abrpExtra && Object.keys(abrpExtra).length > 0 && (
+          {(isAbrp || isMerged) && abrpExtra && Object.keys(abrpExtra).length > 0 && (
             <Section title="ABRP Extra Data">
               {abrpExtra.soh != null && <Row label="State of Health" value={`${abrpExtra.soh}%`} />}
               {abrpExtra.soe != null && <Row label="State of Energy" value={`${abrpExtra.soe} kWh`} />}
@@ -185,8 +191,8 @@ export default function VehicleDetailsModal({
           )}
         </div>
 
-        {/* Charging controls (Enode vehicles only) */}
-        {!isAbrp && (
+        {/* Charging controls (Enode and merged vehicles) */}
+        {(!isAbrp || isMerged) && (
           <div className="mt-4">
             <strong className="text-sm">Charging controls:</strong>
             <div className="flex space-x-2 mt-2">

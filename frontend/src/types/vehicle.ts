@@ -57,4 +57,8 @@ export type Vehicle = {
   scopes?: string[];
   source?: 'enode' | 'abrp';
   abrp_extra?: Record<string, number | string>;
+
+  // Set by frontend merge when same car has both Enode + ABRP
+  sources?: ('enode' | 'abrp')[];
+  abrpVehicle?: Vehicle;
 };

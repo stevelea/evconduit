@@ -17,9 +17,14 @@ const releases: ReleaseNote[] = [
   {
     version: '2026.03.02',
     date: 'March 2, 2026',
-    highlights: 'Admin vendor unlink tracking',
+    highlights: 'Merged same-car dashboard view, admin vendor unlink tracking, and ABRP visibility',
     features: [
+      'Same-car merge — vehicles linked via both Enode and ABRP now appear as a single row with E + ABRP badges instead of two separate entries',
+      'Merged vehicle details modal shows data from both sources with combined source badges and ABRP extra telemetry',
       'Vendor unlink history — admin dashboard now tracks who unlinked a vendor, when, and how many vehicles were removed',
+      'Admin users list now shows E (Enode) and A (ABRP) connection badges instead of simple checkmarks',
+      'ABRP-only users now show "ABRP" in the Account column instead of "None"',
+      'Admin Pushover notifications now fire when users link vehicles via ABRP',
     ],
   },
   {
