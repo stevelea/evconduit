@@ -584,9 +584,15 @@ async def refresh_my_abrp_vehicles(user: dict = Depends(get_supabase_user)):
     if not local_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user_token = getattr(local_user, "abrp_pull_user_token", None)
+    user_token = local_user.abrp_pull_user_token
+    session_token = local_user.abrp_pull_session_token
+    api_key = local_user.abrp_pull_api_key
+    vehicle_ids = local_user.abrp_pull_vehicle_ids
 
-    if not user_token:
+    has_token = bool(user_token)
+    has_session = bool(session_token and api_key and vehicle_ids)
+
+    if not has_token and not has_session:
         raise HTTPException(status_code=400, detail="ABRP API credentials not configured")
 
     logger.info(f"[refresh_abrp] Manual ABRP refresh requested for user_id={user_id}")
@@ -595,6 +601,9 @@ async def refresh_my_abrp_vehicles(user: dict = Depends(get_supabase_user)):
         user_data = {
             "id": user_id,
             "abrp_pull_user_token": user_token,
+            "abrp_pull_session_token": session_token,
+            "abrp_pull_api_key": api_key,
+            "abrp_pull_vehicle_ids": vehicle_ids,
         }
         saved_count = await pull_abrp_for_user(user_data)
 
