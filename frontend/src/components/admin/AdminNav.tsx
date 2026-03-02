@@ -15,6 +15,7 @@ import {
   Database,
   Server,
   Zap,
+  Unlink,
 } from 'lucide-react';
 
 const adminLinks = [
@@ -25,6 +26,7 @@ const adminLinks = [
   { href: '/admin/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
   { href: '/admin/logs', label: 'Logs', icon: ScrollText },
+  { href: '/admin/vendor-unlinks', label: 'Unlinks', icon: Unlink },
   { href: '/admin/news', label: 'News', icon: Newspaper },
   { href: '/admin/user-updates', label: 'Updates', icon: Bell },
   { href: '/admin/backups', label: 'Backups', icon: Database },

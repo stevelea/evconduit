@@ -15,6 +15,14 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.03.02',
+    date: 'March 2, 2026',
+    highlights: 'Admin vendor unlink tracking',
+    features: [
+      'Vendor unlink history — admin dashboard now tracks who unlinked a vendor, when, and how many vehicles were removed',
+    ],
+  },
+  {
     version: '2026.03.01',
     date: 'March 1, 2026',
     highlights: 'Multi-vehicle Home Assistant support and webhook push reliability improvements',

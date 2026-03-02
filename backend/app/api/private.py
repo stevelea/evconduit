@@ -13,6 +13,7 @@ from app.storage.insights import get_global_stats_row, get_user_stats_row
 from app.storage.invoice import get_user_invoices
 from app.storage.subscription import get_user_record, get_user_subscription
 from app.storage.user import get_ha_webhook_settings, get_ha_webhook_stats, get_onboarding_status, set_ha_webhook_settings, update_ha_url_check, update_notify_offline, update_user_terms
+from app.storage.vendor_unlinks import log_vendor_unlink
 import httpx
 from app.api.dependencies import require_pro_tier
 from app.storage.vehicle import delete_vehicles_by_vendor, get_all_cached_vehicles, get_vehicle_by_vehicle_id, get_vehicles_by_country, save_vehicle_data_with_client
@@ -261,6 +262,16 @@ async def unlink_vendor_route(payload: UnlinkRequest, user=Depends(get_supabase_
     # Clean up local vehicle records
     deleted_count = await delete_vehicles_by_vendor(user_id, payload.vendor)
     logger.info(f"✅ Vendor {payload.vendor} unlinked, {deleted_count} vehicles deleted")
+
+    # Log unlink event for admin visibility
+    try:
+        from app.lib.supabase import get_supabase_admin_client
+        sb = get_supabase_admin_client()
+        user_res = sb.table("users").select("email").eq("id", user_id).maybe_single().execute()
+        user_email = user_res.data.get("email", "unknown") if user_res.data else "unknown"
+    except Exception:
+        user_email = "unknown"
+    log_vendor_unlink(user_id=user_id, user_email=user_email, vendor=payload.vendor, deleted_vehicle_count=deleted_count)
 
     return {"success": True, "message": f"Vendor {payload.vendor} unlinked", "deleted_vehicles": deleted_count}
 

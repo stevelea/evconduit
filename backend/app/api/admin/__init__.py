@@ -14,6 +14,7 @@ from .metrics import router as metrics_router
 from .enode_accounts import router as enode_accounts_router
 from .xcombo import router as xcombo_router
 from .useful_links import router as useful_links_router
+from .vendor_unlinks import router as vendor_unlinks_router
 
 routers = [
     # admin_router,
@@ -30,4 +31,5 @@ routers = [
     enode_accounts_router,
     xcombo_router,
     useful_links_router,
+    vendor_unlinks_router,
 ]
