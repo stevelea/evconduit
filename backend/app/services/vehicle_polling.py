@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # Default polling interval: 5 minutes
 DEFAULT_POLL_INTERVAL_SECONDS = 5 * 60
 
+# Max concurrent user polls to keep event loop responsive
+MAX_CONCURRENT_POLLS = 5
+
 
 async def poll_vehicle_for_user(user_id: str) -> list[dict]:
     """
@@ -132,14 +135,25 @@ async def poll_all_users_with_ha() -> dict:
         "errors": 0
     }
 
-    for user_id in user_ids:
-        try:
-            updated_count = await poll_and_push_to_ha(user_id)
-            results["users_polled"] += 1
-            results["vehicles_updated"] += updated_count
-        except Exception as e:
-            logger.error(f"[❌ Poll All] Error polling user {user_id}: {e}")
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_POLLS)
+
+    async def _poll_one(uid: str) -> tuple[int, str | None]:
+        async with semaphore:
+            try:
+                count = await poll_and_push_to_ha(uid)
+                return count, None
+            except Exception as e:
+                return 0, str(e)
+
+    poll_results = await asyncio.gather(*[_poll_one(uid) for uid in user_ids])
+
+    for user_id, (count, error) in zip(user_ids, poll_results):
+        if error:
+            logger.error(f"[❌ Poll All] Error polling user {user_id}: {error}")
             results["errors"] += 1
+        else:
+            results["users_polled"] += 1
+            results["vehicles_updated"] += count
 
     logger.info(f"[✅ Poll All] Complete: {results}")
     return results

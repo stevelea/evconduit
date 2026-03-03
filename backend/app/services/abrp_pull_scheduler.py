@@ -29,6 +29,9 @@ REQUEST_DELAY_SECONDS = 1.0
 # Auto-disable after this many consecutive failures
 MAX_CONSECUTIVE_FAILS = 3
 
+# Max concurrent ABRP user polls
+MAX_CONCURRENT_ABRP_POLLS = 3
+
 
 async def get_users_with_abrp_pull_enabled() -> list[dict]:
     """
@@ -251,18 +254,26 @@ async def poll_all_abrp_users() -> dict:
         "errors": 0,
     }
 
-    for user in users:
-        try:
-            saved = await pull_abrp_for_user(user)
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_ABRP_POLLS)
+
+    async def _poll_one(u: dict) -> tuple[int, str | None]:
+        async with semaphore:
+            try:
+                saved = await pull_abrp_for_user(u)
+                await asyncio.sleep(REQUEST_DELAY_SECONDS)
+                return saved, None
+            except Exception as e:
+                return 0, str(e)
+
+    poll_results = await asyncio.gather(*[_poll_one(u) for u in users])
+
+    for user, (saved, error) in zip(users, poll_results):
+        if error:
+            logger.error(f"[❌ ABRP Poll] Error polling user {user['id']}: {error}")
+            results["errors"] += 1
+        else:
             results["users_polled"] += 1
             results["vehicles_updated"] += saved
-        except Exception as e:
-            logger.error(f"[❌ ABRP Poll] Error polling user {user['id']}: {e}")
-            results["errors"] += 1
-
-        # Rate-limit between users
-        if len(users) > 1:
-            await asyncio.sleep(REQUEST_DELAY_SECONDS)
 
     logger.info(f"[✅ ABRP Poll] Complete: {results}")
     return results
