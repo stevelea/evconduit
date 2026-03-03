@@ -29,7 +29,7 @@ export const metadata = {
     siteName: 'EVConduit',
     images: [
       {
-        url: 'https://evconduit.com/og-image.png',
+        url: 'https://evconduit.com/og-image.png?v=2',
         width: 1200,
         height: 630,
       },
