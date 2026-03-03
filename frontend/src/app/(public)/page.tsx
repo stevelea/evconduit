@@ -24,12 +24,12 @@ export const metadata = {
     // Hardcoded string
     description:
       'EVConduit connects your EV to Home Assistant using Enode and/or ABRP. Secure and open-source.',
-    url: 'http://backend.evconduit.com:3010/', // URL, consider if dynamic
+    url: 'https://evconduit.com/',
     // Hardcoded string
     siteName: 'EVConduit',
     images: [
       {
-        url: 'http://backend.evconduit.com:3010/og-image.png', // URL, consider if dynamic
+        url: 'https://evconduit.com/og-image.png',
         width: 1200,
         height: 630,
       },
