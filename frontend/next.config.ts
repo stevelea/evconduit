@@ -20,6 +20,19 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async rewrites() {
+    const trackerUrl = process.env.XPENG_TRACKER_URL || 'http://xpeng-tracker:3000';
+    return [
+      {
+        source: '/xpeng-tracker',
+        destination: `${trackerUrl}/xpeng-tracker`,
+      },
+      {
+        source: '/xpeng-tracker/:path*',
+        destination: `${trackerUrl}/xpeng-tracker/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

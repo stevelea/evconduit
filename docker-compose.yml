@@ -67,3 +67,17 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  xpeng-tracker:
+    build:
+      context: ./xpeng-tracker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3020:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/ || exit 1"]
+      start_period: 30s
+      interval: 10s
+      timeout: 3s
+      retries: 5
