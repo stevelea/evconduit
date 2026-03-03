@@ -17,14 +17,18 @@ const releases: ReleaseNote[] = [
   {
     version: '2026.03.03',
     date: 'March 3, 2026',
-    highlights: 'Per-source timestamps for merged vehicles and ABRP data freshness fix',
+    highlights: 'Fixed 502 errors, concurrent polling, per-source timestamps, and ABRP data freshness',
     features: [
       'Per-source last seen — merged Enode+ABRP vehicles now show separate timestamps for each data source (e.g. "E 5m ago · ABRP 2m ago")',
+      'XPENG Issue & Suggestion Tracker — standalone Lark Database frontend for browsing and submitting XPENG issues',
     ],
     fixes: [
+      'Fixed intermittent 502 errors — background vehicle polling was blocking the async event loop for 3-5 minutes, starving incoming HTTP requests',
       'Fixed ABRP vehicle data appearing stale on dashboard — Enode cache freshness check no longer blocks ABRP data from updating',
     ],
     improvements: [
+      'Vehicle and ABRP polling now runs concurrently (5 and 3 parallel users respectively) instead of sequentially, reducing poll cycle time and keeping the server responsive',
+      'Nginx now returns JSON error responses instead of Cloudflare HTML pages when upstream errors occur',
       'Vehicle API now always returns the latest ABRP data from the database instead of serving potentially stale cached responses',
     ],
   },
