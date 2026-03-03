@@ -59,48 +59,45 @@ async def get_user_vehicles(user=Depends(get_supabase_user)):
 
     logger.info(f"🔐 Authenticated user: {user_id}")
 
+    # Check if Enode data needs refreshing (ABRP is refreshed by background scheduler)
     cached_data = get_all_cached_vehicles(user_id)
-    logger.debug(f"[DEBUG] cached_data: {cached_data}")
-    vehicles_from_cache = []
+    enode_cache_fresh = False
 
     if cached_data:
         try:
-            updated_at = datetime.fromisoformat(cached_data[0]["updated_at"])
-            logger.debug(f"[DEBUG] now: {now}")
-            logger.debug(f"[DEBUG] updated_at: {updated_at}")
-            logger.debug(f"[DEBUG] now - updated_at: {now - updated_at}")
-            logger.debug(f"[DEBUG] threshold: {timedelta(minutes=CACHE_EXPIRATION_MINUTES)}")
-            if now - updated_at < timedelta(minutes=CACHE_EXPIRATION_MINUTES):
-                for row in cached_data:
-                    vehicle_obj = json.loads(row["vehicle_cache"]) if isinstance(row["vehicle_cache"], str) else row["vehicle_cache"]
-                    vehicle_obj["db_id"] = row["id"]
-                    vehicle_obj["source"] = row.get("source") or "enode"
-                    vehicles_from_cache.append(vehicle_obj)
-                logger.info(f"✅ Serving {len(vehicles_from_cache)} vehicles from cache")
-                return vehicles_from_cache
+            # Check freshness of Enode vehicles only — ABRP is managed by its own poller
+            enode_rows = [r for r in cached_data if (r.get("source") or "enode") != "abrp"]
+            if enode_rows:
+                latest_enode = max(datetime.fromisoformat(r["updated_at"]) for r in enode_rows)
+                enode_cache_fresh = (now - latest_enode) < timedelta(minutes=CACHE_EXPIRATION_MINUTES)
+                if enode_cache_fresh:
+                    logger.info("✅ Enode cache is fresh, skipping Enode refresh")
+                else:
+                    logger.info("ℹ️ Enode cache expired")
             else:
-                logger.info("ℹ️ Cache expired")
+                logger.info("ℹ️ No Enode vehicles in cache")
         except Exception as e:
-            logger.warning(f"[⚠️ cache] Failed to parse updated_at: {e}")
+            logger.warning(f"[⚠️ cache] Failed to check Enode freshness: {e}")
 
-    # Try to refresh from Enode (skip if user has no Enode account — e.g. ABRP-only users)
-    account = await get_enode_account_for_user(user_id)
-    if account:
-        try:
-            fresh_vehicles = await get_user_vehicles_enode(user_id, account)
-            logger.info(f"🔄 Fetched {len(fresh_vehicles)} fresh vehicle(s) from Enode")
+    # Refresh Enode data if stale (skip if user has no Enode account — e.g. ABRP-only users)
+    if not enode_cache_fresh:
+        account = await get_enode_account_for_user(user_id)
+        if account:
+            try:
+                fresh_vehicles = await get_user_vehicles_enode(user_id, account)
+                logger.info(f"🔄 Fetched {len(fresh_vehicles)} fresh vehicle(s) from Enode")
 
-            for vehicle in fresh_vehicles:
-                vehicle["userId"] = user_id
-                await save_vehicle_data_with_client(vehicle)
+                for vehicle in fresh_vehicles:
+                    vehicle["userId"] = user_id
+                    await save_vehicle_data_with_client(vehicle)
 
-            logger.info(f"💾 Saved {len(fresh_vehicles)} vehicle(s) to Supabase")
-        except Exception as e:
-            logger.error(f"[❌ fetch_fresh] Failed to fetch from Enode: {e}")
-    else:
-        logger.info(f"ℹ️ User {user_id} has no Enode account, serving cached/ABRP vehicles only")
+                logger.info(f"💾 Saved {len(fresh_vehicles)} vehicle(s) to Supabase")
+            except Exception as e:
+                logger.error(f"[❌ fetch_fresh] Failed to fetch from Enode: {e}")
+        else:
+            logger.info(f"ℹ️ User {user_id} has no Enode account, serving cached/ABRP vehicles only")
 
-    # Return all cached vehicles (Enode + ABRP)
+    # Always return latest data from DB (includes fresh ABRP data from background scheduler)
     cached_data = get_all_cached_vehicles(user_id)
     vehicles_from_cache = []
     for row in cached_data:
