@@ -15,6 +15,20 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.03.03',
+    date: 'March 3, 2026',
+    highlights: 'Per-source timestamps for merged vehicles and ABRP data freshness fix',
+    features: [
+      'Per-source last seen — merged Enode+ABRP vehicles now show separate timestamps for each data source (e.g. "E 5m ago · ABRP 2m ago")',
+    ],
+    fixes: [
+      'Fixed ABRP vehicle data appearing stale on dashboard — Enode cache freshness check no longer blocks ABRP data from updating',
+    ],
+    improvements: [
+      'Vehicle API now always returns the latest ABRP data from the database instead of serving potentially stale cached responses',
+    ],
+  },
+  {
     version: '2026.03.02',
     date: 'March 2, 2026',
     highlights: 'Merged same-car dashboard view, admin vendor unlink tracking, and ABRP visibility',
