@@ -36,8 +36,8 @@
     "contact": "Kontakt",
     "hero": {
       "badge": "Gratis att komma igång",
-      "title": "Koppla din XPENG.",
-      "subtitle": "EVConduit kopplar ditt elfordon till Home Assistant med Enode. Det är privat, skalbart och redo för avancerade användare."
+      "title": "Koppla din XPENG (eller annan elbil via ABRP).",
+      "subtitle": "EVConduit kopplar ditt elfordon till Home Assistant med Enode och/eller ABRP. Det är privat, skalbart och redo för avancerade användare."
     },
     "pricing": {
       "title": "Välj ditt abonnemang",

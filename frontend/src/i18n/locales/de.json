@@ -36,8 +36,8 @@
     "contact": "Kontakt",
     "hero": {
       "badge": "Kostenlos loslegen",
-      "title": "Verbinde deine XPENG.",
-      "subtitle": "EVConduit verbindet dein Elektrofahrzeug mit Home Assistant über Enode. Es ist privat, skalierbar und bereit für fortgeschrittene Benutzer."
+      "title": "Verbinde deine XPENG (oder anderes EV über ABRP).",
+      "subtitle": "EVConduit verbindet dein Elektrofahrzeug mit Home Assistant über Enode und/oder ABRP. Es ist privat, skalierbar und bereit für fortgeschrittene Benutzer."
     },
     "pricing": {
       "title": "Wähle deinen Plan",

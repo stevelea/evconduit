@@ -6,7 +6,7 @@ export const metadata = {
   title: 'EVConduit – Smarter EV integration for Home Assistant',
   // Hardcoded string
   description:
-    'EVConduit connects your electric vehicle to Home Assistant using Enode. Open-source, secure, and easy to use.',
+    'EVConduit connects your electric vehicle to Home Assistant using Enode and/or ABRP. Open-source, secure, and easy to use.',
   // Hardcoded string array
   keywords: [
     'EVConduit',
@@ -14,6 +14,7 @@ export const metadata = {
     'Home Assistant',
     'EV integration',
     'Enode',
+    'ABRP',
     'smart charging',
     'open source',
   ],
@@ -22,7 +23,7 @@ export const metadata = {
     title: 'EVConduit – Smarter EV integration for Home Assistant',
     // Hardcoded string
     description:
-      'EVConduit connects your EV to Home Assistant using Enode. Secure and open-source.',
+      'EVConduit connects your EV to Home Assistant using Enode and/or ABRP. Secure and open-source.',
     url: 'http://backend.evconduit.com:3010/', // URL, consider if dynamic
     // Hardcoded string
     siteName: 'EVConduit',
