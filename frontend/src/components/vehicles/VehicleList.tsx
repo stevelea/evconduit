@@ -63,11 +63,9 @@ function mergeVehicles(vehicles: Vehicle[]): Vehicle[] {
     const abrp = group.find((v) => v.source === 'abrp');
 
     if (enode && abrp) {
-      // Merge: Enode is primary, attach ABRP reference
-      const lastSeen = pickMostRecent(enode.lastSeen, abrp.lastSeen);
+      // Merge: Enode is primary, attach ABRP reference (keep Enode's lastSeen for per-source display)
       result.push({
         ...enode,
-        lastSeen,
         sources: ['enode', 'abrp'],
         abrpVehicle: abrp,
         // If Enode lacks abrp_extra but ABRP has it, carry it over
@@ -84,10 +82,22 @@ function mergeVehicles(vehicles: Vehicle[]): Vehicle[] {
   return result;
 }
 
-function pickMostRecent(a: string | null, b: string | null): string | null {
-  if (!a) return b;
-  if (!b) return a;
-  return new Date(a) >= new Date(b) ? a : b;
+function LastSeenInfo({ vehicle }: { vehicle: Vehicle }) {
+  const isMerged = vehicle.sources && vehicle.sources.length > 1 && vehicle.abrpVehicle;
+  if (!isMerged) {
+    return <div className="text-xs text-gray-400">Last seen: {formatLastSeen(vehicle.lastSeen)}</div>;
+  }
+  return (
+    <>
+      <div className="text-xs text-gray-400">
+        <span className="inline-flex items-center px-1 py-0 rounded text-[9px] font-medium bg-gray-100 text-gray-600 mr-1">E</span>
+        {formatLastSeen(vehicle.lastSeen)}
+        <span className="mx-1.5">·</span>
+        <span className="inline-flex items-center px-1 py-0 rounded text-[9px] font-medium bg-indigo-50 text-indigo-600 mr-1">ABRP</span>
+        {formatLastSeen(vehicle.abrpVehicle!.lastSeen)}
+      </div>
+    </>
+  );
 }
 
 function SourceBadges({ sources }: { sources?: ('enode' | 'abrp')[] }) {
@@ -241,9 +251,7 @@ function VehicleList({
                       <div className="text-xs text-gray-400">
                         Vehicle ID: {vehicle.db_id}
                       </div>
-                      <div className="text-xs text-gray-400">
-                        Last seen: {formatLastSeen(vehicle.lastSeen)}
-                      </div>
+                      <LastSeenInfo vehicle={vehicle} />
                     </td>
                     <td className="px-6 py-4">{battery}</td>
                     <td className="px-6 py-4">{range}</td>
@@ -321,7 +329,7 @@ function VehicleList({
                 <SourceBadges sources={vehicle.sources} />
               </div>
               <div className="text-xs text-gray-400">Vehicle ID: {vehicle.db_id}</div>
-              <div className="text-xs text-gray-400 mb-1">Last seen: {formatLastSeen(vehicle.lastSeen)}</div>
+              <div className="mb-1"><LastSeenInfo vehicle={vehicle} /></div>
               <div className="text-sm text-gray-600 mb-1">
                 Battery: <span className="font-medium">{battery}</span>
                 {" · "}
