@@ -49,6 +49,7 @@ export default function TrackerPage() {
   const [translatedDesc, setTranslatedDesc] = useState('');
   const [translating, setTranslating] = useState(false);
   const [duplicates, setDuplicates] = useState<TrackerRecord[]>([]);
+  const [submissionCount, setSubmissionCount] = useState<number | null>(null);
 
   const fetchRecords = useCallback(async () => {
     try {
@@ -80,6 +81,11 @@ export default function TrackerPage() {
     // Restore saved email
     const savedEmail = localStorage.getItem('xpeng-tracker-email');
     if (savedEmail) setAddEmail(savedEmail);
+    // Fetch submission count
+    fetch('/xpeng-tracker/api/submissions')
+      .then((r) => r.json())
+      .then((d) => setSubmissionCount(d.count))
+      .catch(() => {});
   }, []);
 
   // Filter and sort
@@ -330,6 +336,22 @@ export default function TrackerPage() {
       ? `${LARK_FORM_URL}?${params.toString()}`
       : LARK_FORM_URL;
     window.open(url, '_blank');
+
+    // Track submission
+    fetch('/xpeng-tracker/api/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: addTitle,
+        type: addType,
+        carModel: addCarModels[0] || null,
+        functionArea: addFunctions[0] || null,
+        xosVersion: addXosVersion,
+        country: addCountry,
+      }),
+    })
+      .then(() => setSubmissionCount((c) => (c ?? 0) + 1))
+      .catch(() => {});
   };
 
   if (loading) {
@@ -365,6 +387,11 @@ export default function TrackerPage() {
           <h1 className="text-2xl font-bold text-gray-900">XPENG Issue & Suggestion Tracker ( Lark Database FrontEnd )</h1>
           <p className="text-sm text-gray-500 mt-1">
             Community-driven tracker for XPENG vehicle issues and feature suggestions
+            {submissionCount !== null && submissionCount > 0 && (
+              <span className="ml-2 text-xs text-gray-400">
+                · {submissionCount} submitted via this tool
+              </span>
+            )}
           </p>
         </div>
         <button

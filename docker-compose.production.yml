@@ -68,6 +68,9 @@ services:
       dockerfile: Dockerfile
     container_name: evconduit-xpeng-tracker
     restart: unless-stopped
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
     ports:
       - "${XPENG_TRACKER_PORT:-3020}:3000"
     networks:
