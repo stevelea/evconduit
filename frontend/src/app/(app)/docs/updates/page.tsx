@@ -15,6 +15,72 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.03.06',
+    date: 'March 6, 2026',
+    highlights: 'Charging history sync to Home Assistant with incremental local storage',
+    features: [
+      'Charging history in Home Assistant — opt-in feature (Settings → Devices & Services → EVConduit → Configure) that syncs charging session history to HA local storage with incremental sync',
+      'New HA sensors: Last Charge Energy, Cost, Location, Date, Duration — plus 30-day aggregate sensors for total energy, cost, and session count',
+      'New HA service: evconduit.sync_charging_history — triggers an immediate incremental sync of charging sessions',
+      'New backend endpoint GET /ha/charging/sessions — returns charging sessions with incremental sync support via `since` parameter',
+    ],
+    improvements: [
+      'HA integration bumped to v1.9.0 with charging history support',
+      'Charging history sync piggybacks on existing vehicle poll interval with 15-minute throttle to minimize API calls',
+    ],
+  },
+  {
+    version: '2026.03.05',
+    date: 'March 5, 2026',
+    highlights: 'AI debug assistant, auto OCM check-in, architecture diagram, OpenChargeMap check-in, charging station info, automatic cost calculation from electricity rates',
+    features: [
+      'AI Debug Assistant — a Claude-powered chat widget (bottom-right sparkle button) that can see your account, vehicles, and Home Assistant integration to help troubleshoot issues in real-time with streaming responses',
+      'Charging cost summary — My Charging page now shows total charging costs for last 7 days, 30 days, 12 months, and all time, grouped by currency',
+      'Auto OCM check-in — enable a profile toggle to automatically report public charging sessions to OpenChargeMap when finalized, no manual action needed',
+      'Architecture & Data Flow page — visual diagram showing how data flows between your car, Enode, ABRP, EVConduit, and Home Assistant (under Guides)',
+      'OpenChargeMap check-in — report successful or failed charging sessions directly to OpenChargeMap from the session detail page, with optional star rating',
+      'Charging station info — public charging sessions now automatically detect and persist the station name, operator, address, and usage cost from OpenChargeMap at session finalization',
+      'Station info in session list — charging session cards now show the station name and operator inline for quick identification',
+      'Station usage cost — session detail page shows the estimated cost from OpenChargeMap (informational only, does not override manual cost entries)',
+      'Electricity rate push from Home Assistant — the EVConduit HA integration (v1.8.0+) can now automatically push your configured electricity rate sensor to EVConduit on change and every 5 minutes, with currency auto-detected from your HA settings',
+      'Home location settings — set your home coordinates and radius on the Profile page for automatic at-home session detection',
+      'Auto-calculated charging costs — when a charging session completes at home, costs are automatically calculated using the electricity rate history with a granular time-based breakdown',
+      'Cost breakdown table — session detail page now shows how much energy was consumed at each rate during a charging session',
+      'Manual electricity rate entry — set your rate directly from the web UI on the Profile page',
+    ],
+    fixes: [
+      'Fixed OpenChargeMap check-in failing with "failed to fetch" — OCM auth endpoint requires API key as query parameter, and token is nested under Data.access_token in the response',
+      'Fixed admin dashboard vehicle count not including ABRP-sourced vehicles — total was stuck at Enode-only count',
+      'Fixed AI assistant not seeing Home Assistant webhook status — was using a limited user model instead of full database row',
+    ],
+    improvements: [
+      'Backfilled OpenChargeMap station IDs for 171 existing public charging sessions — check-in and rating UI now available on historical sessions',
+      'Session detail page now displays total cost and rate in the summary card with auto-calculated indicator',
+      'Manually editing cost fields on a session clears the auto-applied state so you can override automatic calculations',
+      'Community Insights page now shows battery State of Health (SOH) stats from ABRP — Low, Average, and High across the fleet',
+      'Older sessions without persisted station data fall back to live OpenChargeMap lookup on the detail page',
+      'Database security hardening — enabled RLS on electricity_rate_log and xpeng_tracker_submissions, fixed privilege escalation in webhook_subscriptions RLS policy, converted views to SECURITY INVOKER',
+    ],
+  },
+  {
+    version: '2026.03.04',
+    date: 'March 4, 2026',
+    highlights: 'Multi-worker backend to eliminate 502 errors, enhanced status page, odometer pre-fill, and currency fixes',
+    features: [
+      'Status page now shows all backend services — Redis, Database, and Enode API health with response times',
+      'Session odometer field now pre-fills from Enode vehicle data when available, so you don\'t have to enter it manually',
+    ],
+    fixes: [
+      'Fixed root cause of 502 errors — single uvicorn worker was saturated during polling cycles (60+ Enode API calls + 50+ HA webhook pushes), blocking incoming requests. Now runs 4 gunicorn workers with Redis-based leader election so only one worker runs background schedulers',
+      'Fixed Docker healthchecks for frontend and XPENG tracker — Next.js standalone binds to container IP instead of 0.0.0.0 because Docker overrides the HOSTNAME env var with the container ID',
+      'Fixed default currency showing SEK for all users — now correctly defaults based on vehicle country (e.g. AUD for Australia)',
+    ],
+    improvements: [
+      'Backend now runs gunicorn with 4 uvicorn workers — 3 dedicated to API requests, 1 leader worker also handles polling/webhooks',
+      'Redis-based scheduler leader election ensures background tasks run exactly once across all workers, with auto-renewal and failover',
+    ],
+  },
+  {
     version: '2026.03.03',
     date: 'March 3, 2026',
     highlights: 'Fixed 502 errors, concurrent polling, per-source timestamps, and ABRP data freshness',

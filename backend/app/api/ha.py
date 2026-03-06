@@ -17,6 +17,7 @@ from app.api.dependencies import api_key_rate_limit, require_basic_or_pro_tier
 from app.dependencies.auth import get_current_user
 from app.storage.user import get_user_by_id, set_ha_webhook_settings, get_ha_webhook_settings
 from app.storage.enode_account import get_enode_account_for_user
+from app.storage.electricity_rate import save_electricity_rate, get_current_electricity_rate
 
 # Create a module-specific logger
 logger = logging.getLogger(__name__)
@@ -120,7 +121,11 @@ async def get_vehicle_status_legacy(vehicle_id: str, user: User = Depends(get_ap
 
     try:
         # Try internal DB ID first, then Enode ID for backwards compatibility
-        vehicle = await get_vehicle_by_id(vehicle_id)
+        try:
+            vehicle = await get_vehicle_by_id(vehicle_id)
+        except APIError:
+            # ID may not be a valid UUID — fall through to vehicle_id lookup
+            vehicle = None
         if not vehicle:
             vehicle = await get_vehicle_by_vehicle_id(vehicle_id)
     except APIError as e:
@@ -522,20 +527,11 @@ async def register_ha_webhook(
 async def unregister_ha_webhook(user: User = Depends(get_api_key_user)):
     """
     Unregisters the Home Assistant webhook URL.
-    Called when the HA integration is removed.
+    Now a no-op: we keep webhook settings in the DB so they survive HA reboots.
+    The register endpoint always overwrites with fresh data on next setup.
     """
-    logger.info("[unregister_ha_webhook] Unregistering webhook for user_id=%s", user.id)
-
-    try:
-        success = set_ha_webhook_settings(user.id, "", "")
-        if success:
-            logger.info("[unregister_ha_webhook] Webhook unregistered successfully for user %s", user.id)
-            return {"status": "success", "message": "Webhook unregistered"}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to unregister webhook")
-    except Exception as e:
-        logger.error("[unregister_ha_webhook] Error unregistering webhook: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error unregistering webhook: {str(e)}")
+    logger.info("[unregister_ha_webhook] Ignoring unregister for user_id=%s (settings preserved for reboot)", user.id)
+    return {"status": "success", "message": "Webhook unregistered"}
 
 
 @router.get("/ha/webhook/status",
@@ -669,3 +665,106 @@ async def refresh_vehicle_data(user: User = Depends(get_api_key_user)):
     except Exception as e:
         logger.error("[refresh_vehicle_data] Error refreshing vehicles: %s", e, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Error refreshing vehicle data: {str(e)}")
+
+
+# -------------------------------------------------------------------
+# Electricity Rate endpoints
+# -------------------------------------------------------------------
+class ElectricityRateRequest(BaseModel):
+    cost_per_kwh: float = Field(..., description="Electricity cost per kWh", ge=0)
+    currency: str = Field(..., description="Currency code (e.g. AUD, SEK, EUR)", min_length=3, max_length=3)
+
+
+@router.post("/ha/electricity-rate",
+             summary="Push current electricity rate from Home Assistant",
+             dependencies=[Depends(api_key_rate_limit)],
+             )
+async def post_electricity_rate(
+    body: ElectricityRateRequest = Body(...),
+    user: User = Depends(get_api_key_user),
+):
+    """
+    Push the current electricity rate from Home Assistant.
+    Call this periodically (e.g. every 15 minutes) to track rate changes.
+    The rate history is used to auto-calculate charging costs for sessions at home.
+    """
+    logger.info(
+        "[post_electricity_rate] Rate %.4f %s for user_id=%s",
+        body.cost_per_kwh,
+        body.currency.upper(),
+        user.id,
+    )
+
+    entry_id = await save_electricity_rate(
+        user_id=user.id,
+        rate=body.cost_per_kwh,
+        currency=body.currency.upper(),
+        source="ha",
+    )
+
+    if not entry_id:
+        raise HTTPException(status_code=500, detail="Failed to save electricity rate")
+
+    return {
+        "status": "success",
+        "cost_per_kwh": body.cost_per_kwh,
+        "currency": body.currency.upper(),
+    }
+
+
+@router.get("/ha/charging/sessions",
+            summary="Get charging sessions for Home Assistant sync",
+            )
+async def get_charging_sessions(
+    since: str = None,
+    limit: int = 50,
+    user: User = Depends(get_api_key_user),
+):
+    """
+    Get charging sessions for incremental sync to Home Assistant.
+    Returns sessions ordered by start_time ASC (oldest first).
+
+    Query params:
+        since: ISO timestamp — only return sessions after this time
+        limit: max sessions to return (default 50, max 200)
+    """
+    from app.storage.charging_sessions import get_sessions_since
+
+    limit = min(max(limit, 1), 200)
+
+    logger.info(
+        "[get_charging_sessions] Fetching sessions for user_id=%s since=%s limit=%d",
+        user.id, since, limit,
+    )
+
+    try:
+        sessions, has_more = await get_sessions_since(
+            user_id=user.id,
+            since=since,
+            limit=limit,
+        )
+        return {"sessions": sessions, "has_more": has_more}
+    except Exception as e:
+        logger.error("[get_charging_sessions] Error: %s", e, exc_info=True)
+        raise HTTPException(status_code=502, detail="Error fetching charging sessions")
+
+
+@router.get("/ha/electricity-rate",
+            summary="Get current electricity rate",
+            )
+async def get_electricity_rate(user: User = Depends(get_api_key_user)):
+    """Returns the current electricity rate and last updated timestamp."""
+    rate_data = await get_current_electricity_rate(user.id)
+
+    if not rate_data or rate_data.get("electricity_rate") is None:
+        return {
+            "cost_per_kwh": None,
+            "currency": None,
+            "updated_at": None,
+        }
+
+    return {
+        "cost_per_kwh": float(rate_data["electricity_rate"]),
+        "currency": rate_data.get("electricity_currency"),
+        "updated_at": rate_data.get("electricity_rate_updated_at"),
+    }
