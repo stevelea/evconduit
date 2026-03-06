@@ -330,11 +330,11 @@ export default function HAApiPage() {
           <p>
             This endpoint allows you to request that a vehicle start or stop charging. Only users on the <strong>Pro tier</strong> can use this endpoint.
             {/* Hardcoded string */}
-            The request creates an Action that will retry until the vehicle’s <code>powerDeliveryState</code> matches the expected value.
+            The request creates an Action that will retry until the vehicle&apos;s <code>powerDeliveryState</code> matches the expected value.
             {/* Hardcoded string */}
             Any existing PENDING action of the same target and type will be reused; if the new action differs, the existing one will automatically transition to CANCELLED.
             {/* Hardcoded string */}
-            Note that it can take a few seconds before the vehicle’s status updates, and the backend will keep retrying until the desired state is reached.
+            Note that it can take a few seconds before the vehicle&apos;s status updates, and the backend will keep retrying until the desired state is reached.
           </p>
 
           {/* Hardcoded string */}
@@ -373,29 +373,158 @@ export default function HAApiPage() {
           {/* Hardcoded string */}
           <h3 className='text-xl font-semibold mt-6'>Error Handling</h3>
           <ul className='list-disc ml-6 space-y-2'>
-            {/* Hardcoded string */}
             <li><code>401 Unauthorized</code>: Missing or invalid API key.</li>
-            {/* Hardcoded string */}
             <li><code>403 Forbidden</code>: User not on Pro tier or does not own the specified vehicle.</li>
-            {/* Hardcoded string */}
             <li><code>404 Not Found</code>: Vehicle not found in EVConduit.</li>
-            {/* Hardcoded string */}
             <li>
               <code>400 Bad Request</code>: Attempt to <code>START</code> while vehicle is unplugged or already charging,
-              {/* Hardcoded string */}
-              or to <code>STOP</code> while vehicle is not charging. The response will include a message indicating the required state.
+              or to <code>STOP</code> while vehicle is not charging.
             </li>
-            {/* Hardcoded string */}
             <li>
               <code>422 Unprocessable Entity</code>: Vehicle is under scheduled or smart charging control.
-              {/* Hardcoded string */}
-              Check Enode’s error message for details (e.g., “Vehicle controlled by schedule”).
             </li>
-            {/* Hardcoded string */}
-            <li><code>429 Too Many Requests</code>: Rate limit exceeded. Free tier: 300 calls per 30 days, Pro tier: 60 calls per minute.</li>
-            {/* Hardcoded string */}
+            <li><code>429 Too Many Requests</code>: Rate limit exceeded.</li>
             <li><code>500 Internal Server Error</code>: Vehicle record missing Enode ID or unexpected server error.</li>
           </ul>
+        </div>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Charging History Endpoint */}
+        {/* ------------------------------------------------------------------ */}
+
+        <div className='mt-16 border-t pt-6'>
+          <h2 className='text-2xl font-semibold'>Charging History Endpoint</h2>
+          <p className='mt-2'>
+            Fetch charging sessions for incremental sync to Home Assistant. Returns sessions
+            ordered by <code>start_time</code> ascending (oldest first) for efficient pagination.
+          </p>
+
+          <h3 className='text-xl font-semibold mt-6'>Get Sessions</h3>
+          <CodeBlock code='GET https://backend.evconduit.com/api/ha/charging/sessions' language='http' />
+
+          <h3 className='text-xl font-semibold mt-4'>Query Parameters</h3>
+          <div className='mt-2 overflow-x-auto'>
+            <table className='min-w-full text-sm border'>
+              <thead>
+                <tr className='bg-gray-100'>
+                  <th className='border px-3 py-2 text-left'>Parameter</th>
+                  <th className='border px-3 py-2 text-left'>Type</th>
+                  <th className='border px-3 py-2 text-left'>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className='border px-3 py-2'><code>since</code></td>
+                  <td className='border px-3 py-2'>ISO timestamp (optional)</td>
+                  <td className='border px-3 py-2'>Only return sessions with <code>start_time</code> after this timestamp</td>
+                </tr>
+                <tr>
+                  <td className='border px-3 py-2'><code>limit</code></td>
+                  <td className='border px-3 py-2'>int (optional, default 50)</td>
+                  <td className='border px-3 py-2'>Maximum sessions to return (max 200)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className='text-xl font-semibold mt-4'>Response</h3>
+          <CodeBlock
+            code={`{
+  "sessions": [
+    {
+      "session_id": "abc-123",
+      "start_time": "2026-03-01T10:00:00+00:00",
+      "end_time": "2026-03-01T12:30:00+00:00",
+      "energy_added_kwh": 25.4,
+      "total_cost": 8.50,
+      "cost_per_kwh": 0.3346,
+      "currency": "AUD",
+      "station_name": "Home",
+      "battery_level_start": 20,
+      "battery_level_end": 80,
+      "location_lat": -33.8688,
+      "location_lon": 151.2093
+    }
+  ],
+  "has_more": false
+}`}
+            language='json'
+          />
+          <p className='mt-2 text-sm text-gray-600'>
+            When <code>has_more</code> is <code>true</code>, use the last session&apos;s <code>start_time</code>
+            as the <code>since</code> parameter in the next request to fetch the next page.
+          </p>
+
+          <div className='bg-blue-50 border-l-4 border-blue-500 text-blue-800 p-4 rounded mt-4'>
+            <strong>Note:</strong> This endpoint is used automatically by the HACS integration (v1.9.0+)
+            when charging history is enabled. You don&apos;t need to call it manually unless building a custom integration.
+          </div>
+        </div>
+
+        {/* ------------------------------------------------------------------ */}
+        {/* Electricity Rate Endpoint */}
+        {/* ------------------------------------------------------------------ */}
+
+        <div className='mt-16 border-t pt-6'>
+          <h2 className='text-2xl font-semibold'>Electricity Rate Endpoint</h2>
+          <p className='mt-2'>
+            Push your current electricity rate from Home Assistant. EVConduit stores a rate history
+            and uses it to automatically calculate charging costs for sessions at your home location.
+          </p>
+
+          <h3 className='text-xl font-semibold mt-6'>Push Rate</h3>
+          <CodeBlock code='POST https://api.evconduit.cloud/api/v1/ha/electricity-rate' language='http' />
+
+          <h3 className='text-xl font-semibold mt-4'>Request Body</h3>
+          <CodeBlock
+            code={`{
+  "cost_per_kwh": 0.15,
+  "currency": "AUD"
+}`}
+            language='json'
+          />
+
+          <h3 className='text-xl font-semibold mt-4'>Get Current Rate</h3>
+          <CodeBlock code='GET https://api.evconduit.cloud/api/v1/ha/electricity-rate' language='http' />
+
+          <h3 className='text-xl font-semibold mt-6'>Home Assistant Automation</h3>
+          <p className='mt-2'>
+            Create a <code>rest_command</code> and automation to push your electricity rate whenever it changes:
+          </p>
+          <CodeBlock
+            code={`# configuration.yaml
+rest_command:
+  push_electricity_rate:
+    url: "https://api.evconduit.cloud/api/v1/ha/electricity-rate"
+    method: POST
+    headers:
+      X-API-Key: !secret evconduit_api_key
+      Content-Type: "application/json"
+    payload: >-
+      {"cost_per_kwh": {{ cost_per_kwh }}, "currency": "{{ currency }}"}
+
+# automations.yaml
+- alias: "Push electricity rate to EVConduit"
+  trigger:
+    - platform: state
+      entity_id: sensor.electricity_price
+  action:
+    - service: rest_command.push_electricity_rate
+      data:
+        cost_per_kwh: "{{ states('sensor.electricity_price') | float }}"
+        currency: "AUD"`}
+            language='yaml'
+          />
+
+          <div className='bg-blue-50 border-l-4 border-blue-500 text-blue-800 p-4 rounded mt-4'>
+            <strong>Setup Steps:</strong>
+            <ol className='list-decimal ml-6 mt-2 space-y-1'>
+              <li>Set your home location in EVConduit Profile settings</li>
+              <li>Add the <code>rest_command</code> to your <code>configuration.yaml</code></li>
+              <li>Create the automation (adjust <code>entity_id</code> and <code>currency</code> to match your setup)</li>
+              <li>Charging sessions at home will automatically have costs calculated using the rate history</li>
+            </ol>
+          </div>
         </div>
       </section>
     </main>
