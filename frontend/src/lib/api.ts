@@ -96,6 +96,33 @@ export async function apiFetchSafe(
 }
 
 /**
+ * Submit an OpenChargeMap check-in for a charging session.
+ */
+export async function submitOcmCheckin(
+  sessionId: string,
+  successful: boolean = true,
+  rating?: number
+) {
+  return apiFetchSafe(`/api/charging/sessions/${sessionId}/ocm-checkin`, {
+    method: "POST",
+    body: JSON.stringify({ successful, rating }),
+  });
+}
+
+/**
+ * Look up the vehicle odometer reading from charging samples at the time of a session.
+ */
+export async function lookupSessionOdometer(
+  sessionId: string
+): Promise<{ odometer_km: number | null; source: string | null }> {
+  const res = await apiFetchSafe(`/api/charging/sessions/${sessionId}/odometer-lookup`);
+  if (res.error) {
+    return { odometer_km: null, source: null };
+  }
+  return res.data as { odometer_km: number | null; source: string | null };
+}
+
+/**
  * Download charging sessions as CSV file.
  * Triggers a file download in the browser.
  */

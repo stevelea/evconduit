@@ -13,8 +13,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Sparkles, Search } from "lucide-react";
 import type { ChargingSession, UpdateSessionData } from "@/types/charging";
+import { lookupSessionOdometer } from "@/lib/api";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useCurrency } from "@/hooks/useCurrency";
 
 interface SessionDataFormProps {
@@ -48,6 +57,7 @@ export default function SessionDataForm({ session, onSave }: SessionDataFormProp
   );
   const [odometer, setOdometer] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [lookingUpOdo, setLookingUpOdo] = useState(false);
   const [costMode, setCostMode] = useState<"per_kwh" | "total">("per_kwh");
 
   // Initialize form values from session
@@ -131,6 +141,66 @@ export default function SessionDataForm({ session, onSave }: SessionDataFormProp
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Auto-applied cost indicator */}
+        {session.cost_auto_applied && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-start gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-emerald-800">
+                Cost auto-calculated from electricity rate
+              </p>
+              <p className="text-emerald-700 mt-0.5">
+                Editing cost fields below will override the automatic calculation.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Cost breakdown table */}
+        {session.cost_breakdown && session.cost_breakdown.length > 0 && (
+          <div className="space-y-2">
+            <Label>Cost Breakdown</Label>
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Time</TableHead>
+                    <TableHead className="text-xs text-right">Rate</TableHead>
+                    <TableHead className="text-xs text-right">Energy</TableHead>
+                    <TableHead className="text-xs text-right">Cost</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {session.cost_breakdown.map((entry, i) => {
+                    const start = new Date(entry.start);
+                    const end = new Date(entry.end);
+                    const timeFormat = new Intl.DateTimeFormat(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+                    return (
+                      <TableRow key={i}>
+                        <TableCell className="text-xs">
+                          {timeFormat.format(start)} - {timeFormat.format(end)}
+                        </TableCell>
+                        <TableCell className="text-xs text-right">
+                          {entry.rate} {entry.currency}/kWh
+                        </TableCell>
+                        <TableCell className="text-xs text-right">
+                          {entry.energy_kwh.toFixed(2)} kWh
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-medium">
+                          {entry.cost.toFixed(2)} {entry.currency}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+
         {/* Cost Entry Mode Selection */}
         <div className="space-y-2">
           <Label>Cost Entry Method</Label>
@@ -211,15 +281,44 @@ export default function SessionDataForm({ session, onSave }: SessionDataFormProp
           {/* Odometer */}
           <div className="space-y-2">
             <Label htmlFor="odometer">Odometer (km)</Label>
-            <Input
-              id="odometer"
-              type="number"
-              step="1"
-              min="0"
-              placeholder="e.g., 45000"
-              value={odometer}
-              onChange={(e) => setOdometer(e.target.value)}
-            />
+            <div className="flex gap-2">
+              <Input
+                id="odometer"
+                type="number"
+                step="1"
+                min="0"
+                placeholder={session.vehicle_odometer_km ? `Current: ${Math.round(session.vehicle_odometer_km)} km` : "e.g., 45000"}
+                value={odometer}
+                onChange={(e) => setOdometer(e.target.value)}
+                className="flex-1"
+              />
+              {!odometer && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title="Look up odometer from vehicle data at session time"
+                  disabled={lookingUpOdo}
+                  onClick={async () => {
+                    setLookingUpOdo(true);
+                    const result = await lookupSessionOdometer(session.session_id);
+                    setLookingUpOdo(false);
+                    if (result.odometer_km) {
+                      setOdometer(result.odometer_km.toString());
+                      toast.success(`Odometer found: ${result.odometer_km.toLocaleString()} km`);
+                    } else {
+                      toast.info("No odometer reading found for this session");
+                    }
+                  }}
+                >
+                  {lookingUpOdo ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
