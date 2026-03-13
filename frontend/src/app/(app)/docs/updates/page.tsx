@@ -15,6 +15,63 @@ interface ReleaseNote {
 
 const releases: ReleaseNote[] = [
   {
+    version: '2026.03.13',
+    date: 'March 13, 2026',
+    highlights: 'Manual session creation with receipt parsing, personal insights page, orphaned Enode user cleanup, scheduler reliability',
+    features: [
+      'Manual charging session creation — add past charging sessions manually from the My Charging page with date, energy, cost, and location fields',
+      'AI receipt parsing — upload a photo of a charging receipt and let Claude extract the session details automatically',
+      'Personal insights page — your personal charging stats (cost summaries, session history) are now on a dedicated page, separate from community insights',
+      'Orphaned Enode users admin page — admin tool to identify and clean up Enode user accounts that are no longer linked to an EVConduit account',
+    ],
+    fixes: [
+      'Fixed vehicle relinking blocked when at capacity — returning users can now relink their vehicle even when the account limit is full',
+      'Fixed Home Assistant webhook push failing silently — retry logic now tries multiple vehicle ID formats (configured, internal, Enode) before giving up',
+      'Fixed Stripe webhook validation errors when STRIPE_WEBHOOK_SECRET is not configured',
+    ],
+    improvements: [
+      'Redis-based scheduler leader election — only one backend worker runs background schedulers in multi-worker deployments, preventing duplicate polling',
+      'Smartcar docs page — new documentation page explaining Smartcar integration setup and supported features',
+      'HA webhook push stats now distinguish between "rejected" (ID mismatch) and "error" (connection/timeout) failures',
+    ],
+  },
+  {
+    version: '2026.03.11',
+    date: 'March 11, 2026',
+    highlights: 'MQTT output for non-HA users, Smartcar live mode, brand cross-reference, EVLink→EVConduit rebrand',
+    features: [
+      'MQTT output — enable on your Profile page to receive vehicle data via any MQTT client (Node-RED, MQTT Explorer, OpenHAB, custom apps). Auto-provisioned credentials, retained JSON messages, isolated per-user topics.',
+      'Smartcar integration live — Smartcar Connect now uses live mode (previously simulated). All users can link vehicles via Smartcar from the Dashboard.',
+      'Brand cross-reference table — Capabilities page now shows which brands are supported by Enode, Smartcar, and ABRP side-by-side with overlap indicators.',
+      'Smartcar card on landing page — new connection method card alongside Enode and ABRP for new visitors.',
+    ],
+    improvements: [
+      'Rebranded EVLink → EVConduit across all pages, footers, locale files, and feature descriptions',
+      'Updated hero section and feature cards to be brand-neutral (removed XPENG-specific references)',
+      'Integration Guide now includes Smartcar as Option B and MQTT as alternative to Home Assistant',
+    ],
+  },
+  {
+    version: '2026.03.10',
+    date: 'March 10, 2026',
+    highlights: 'Fix charging controls and HA API documentation',
+    fixes: [
+      'Fixed Start/Stop charging buttons in the web UI returning "Invalid API key" — buttons now use JWT authentication instead of API key auth',
+      'Fixed HA API documentation showing incorrect base URL and authentication method — corrected to use backend.evconduit.com and Authorization: Bearer header',
+      'Fixed HA API documentation charging endpoint URL causing 404 errors — removed incorrect /v1/ path prefix',
+    ],
+  },
+  {
+    version: '2026.03.09',
+    date: 'March 9, 2026',
+    highlights: 'Optional supporter subscription to help cover hosting and development costs',
+    features: [
+      'Optional $5 AUD/month supporter subscription — available on the dashboard and billing page to help cover hosting, API, and development costs. Cancel anytime.',
+      'Support card on dashboard — non-intrusive card at the bottom of the dashboard with one-click Stripe checkout',
+      'Updated landing page — support section replaces Buy Me a Coffee with Stripe-powered subscription option',
+    ],
+  },
+  {
     version: '2026.03.06',
     date: 'March 6, 2026',
     highlights: 'Charging history sync to Home Assistant with incremental local storage',
